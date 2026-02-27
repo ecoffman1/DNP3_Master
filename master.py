@@ -455,9 +455,6 @@ def sendCommand(myClient):
     psCommandParameters.u8Count    =   1
     psCommandParameters.eCommandVariation = eCommandObjectVariation.ANALOG_OUTPUT_BLOCK_FLOAT32
 
-
-
-
     now = time.time()
     timeinfo = time.localtime(now)
     
@@ -486,69 +483,78 @@ def sendCommand(myClient):
     else:
         message = f"DNP3 Library API Function - DNP3DirectOperate() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
         print(message) 
-
-#main program
-def main():
-    #Setting up Solid Credintials
-    account = CssAccount(css_base_url=SOLID_SERVER, email=CSS_EMAIL, password=CSS_PASSWORD)
-    client_credentials = get_client_credentials(account)
-
-    CLIENT_ID = client_credentials.client_id
-    CLIENT_SECRET = client_credentials.client_secret
-
-
-    print(" \t\t**** DNP3 Protocol Client Library Test ****")
-    # Check library version against the library header file
-    if dnp3_lib.DNP3GetLibraryVersion().decode("utf-8") != DNP3_VERSION:
-        print(" Error: Version Number Mismatch")
-        print(" Library Version is  : {}".format(dnp3_lib.DNP3GetLibraryVersion().decode("utf-8")))
-        print(" The Header Version used is : {}".format(DNP3_VERSION))
-        print("")
-        input(" Press Enter to free dnp3 cLIENT object")
-        exit(0)
-
-    print(" Library Version is : {}".format(dnp3_lib.DNP3GetLibraryVersion().decode("utf-8")))
-    print(" Library Build on   : {}".format(dnp3_lib.DNP3GetLibraryBuildTime().decode("utf-8")))
-    print(" Library License Information   : {}".format(dnp3_lib.DNP3GetLibraryLicenseInfo().decode("utf-8")))
-
-    i16ErrorCode = ctypes.c_short()
-    tErrorValue =  ctypes.c_short() 
-
-    sParameters = sDNP3Parameters()
-
-   
-
-    # Initialize IEC 60870-5-104 Client object parameters
-    sParameters.eAppFlag          =  eApplicationFlag.APP_CLIENT        # This is a IEC104 Server      
-    sParameters.ptReadCallback    = ctypes.cast(None,DNP3ReadCallback)               # Read Callback
-    sParameters.ptWriteCallback   = ctypes.cast(None,DNP3WriteCallback)                # Write Callback
-    sParameters.ptUpdateCallback  = DNP3UpdateCallback(cbUpdate) #IEC104UpdateCallback(0)                 # Update Callback
-    sParameters.ptSelectCallback  = ctypes.cast(None,DNP3ControlSelectCallback)               # Select Callback
-    sParameters.ptOperateCallback = ctypes.cast(None,DNP3ControlOperateCallback)              # Operate Callback
-    sParameters.ptDebugCallback   = DNP3DebugMessageCallback(cbDebug)                # Debug Callback
-    sParameters.ptUpdateIINCallback = DNP3UpdateIINCallback(cbUpdateIIN)
-    sParameters.ptClientPollStatusCallback = DNP3ClientPollStatusCallback(cbPollStatus)				# Function called when Client Compteated Poll operation for particular Server. If equal to NULL then callback is not used 
-    sParameters.ptClientStatusCallback = DNP3ClientStatusCallback(cbClientStatus)
-    sParameters.ptColdRestartCallback    = ctypes.cast(None,DNP3ColdRestartCallback)        # ColdRestart Callback
-    sParameters.ptWarmRestartCallback    = ctypes.cast(None,DNP3WarmRestartCallback)        # ColdRestart Callback
-    sParameters.ptDeviceAttrCallback    = DNP3DeviceAttributeCallback(cbDeviceAtt)
-    sParameters.u32Options        = 0
-    sParameters.u16ObjectId				= 1				#Server ID which used in callbacks to identify the iec 104 server object   
-
+_keep_alive = []
+#Master Class
+class DNP3_Master:
+    def __init__(self):
+        self._callback_wrappers = []
+        self.client = None
     
-    # Create a client object
+    def _wrap(self, callback_type, func):
+        """Helper to wrap and persist callbacks."""
+        if func is None:
+            return ctypes.cast(None, callback_type)
+        wrapper = callback_type(func)
+        self._callback_wrappers.append(wrapper)
+        return wrapper
+    
+    def start(self):
+        global _keep_alive
+        #Setting up Solid Credintials
+        account = CssAccount(css_base_url=SOLID_SERVER, email=CSS_EMAIL, password=CSS_PASSWORD)
+        client_credentials = get_client_credentials(account)
 
-    myClient =  dnp3_lib.DNP3Create(ctypes.byref(sParameters), ctypes.byref((i16ErrorCode)), ctypes.byref((tErrorValue)))
-    if i16ErrorCode.value != 0:
-        message = f"DNP3 Library API Function - DNP3Create() failed: {i16ErrorCode.value} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message)    
-        exit(0) 
-    else:
-        message = f"DNP3 Library API Function -DNP3Create() success: {i16ErrorCode.value} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message) 
+        CLIENT_ID = client_credentials.client_id
+        CLIENT_SECRET = client_credentials.client_secret
 
 
-    while(True):
+        print(" \t\t**** DNP3 Protocol Client Library Test ****")
+        # Check library version against the library header file
+        if dnp3_lib.DNP3GetLibraryVersion().decode("utf-8") != DNP3_VERSION:
+            print(" Error: Version Number Mismatch")
+            print(" Library Version is  : {}".format(dnp3_lib.DNP3GetLibraryVersion().decode("utf-8")))
+            print(" The Header Version used is : {}".format(DNP3_VERSION))
+            print("")
+            input(" Press Enter to free dnp3 cLIENT object")
+            exit(0)
+
+        print(" Library Version is : {}".format(dnp3_lib.DNP3GetLibraryVersion().decode("utf-8")))
+        print(" Library Build on   : {}".format(dnp3_lib.DNP3GetLibraryBuildTime().decode("utf-8")))
+        print(" Library License Information   : {}".format(dnp3_lib.DNP3GetLibraryLicenseInfo().decode("utf-8")))
+
+        i16ErrorCode = ctypes.c_short()
+        tErrorValue =  ctypes.c_short() 
+        sParameters = sDNP3Parameters()
+
+        sParameters.eAppFlag          =  eApplicationFlag.APP_CLIENT
+        sParameters.ptReadCallback = self._wrap(DNP3ReadCallback, None)
+        sParameters.ptWriteCallback = self._wrap(DNP3WriteCallback, None)
+        sParameters.ptUpdateCallback = self._wrap(DNP3UpdateCallback, cbUpdate)
+        sParameters.ptSelectCallback = self._wrap(DNP3ControlSelectCallback, None)
+        sParameters.ptOperateCallback = self._wrap(DNP3ControlOperateCallback, None)
+        sParameters.ptDebugCallback = self._wrap(DNP3DebugMessageCallback, cbDebug)
+        sParameters.ptUpdateIINCallback = self._wrap(DNP3UpdateIINCallback, cbUpdateIIN)
+        sParameters.ptClientPollStatusCallback = self._wrap(DNP3ClientPollStatusCallback, cbPollStatus)
+        sParameters.ptClientStatusCallback = self._wrap(DNP3ClientStatusCallback, cbClientStatus)
+        sParameters.ptColdRestartCallback = self._wrap(DNP3ColdRestartCallback, None)
+        sParameters.ptWarmRestartCallback = self._wrap(DNP3WarmRestartCallback, None)
+        sParameters.ptDeviceAttrCallback = self._wrap(DNP3DeviceAttributeCallback, cbDeviceAtt)
+
+        sParameters.u32Options        = 0
+        sParameters.u16ObjectId				= 1				#Server ID which used in callbacks to identify the iec 104 server object   
+
+        
+        
+        # Create a client object
+
+        self.myClient =  dnp3_lib.DNP3Create(ctypes.byref(sParameters), ctypes.byref((i16ErrorCode)), ctypes.byref((tErrorValue)))
+        if i16ErrorCode.value != 0:
+            message = f"DNP3 Library API Function - DNP3Create() failed: {i16ErrorCode.value} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message)    
+            exit(0) 
+        else:
+            message = f"DNP3 Library API Function -DNP3Create() success: {i16ErrorCode.value} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message) 
 
         sDNP3Config = sDNP3ConfigurationParameters()
 
@@ -622,15 +628,13 @@ def main():
         #Allocate memory for objects
         arraypointer[0].psDNP3Objects = None
 
-
-
-        
-
-        i16ErrorCode =  dnp3_lib.DNP3LoadConfiguration(myClient, ctypes.byref(sDNP3Config), ctypes.byref((tErrorValue)))
+        i16ErrorCode =  dnp3_lib.DNP3LoadConfiguration(self.myClient, ctypes.byref(sDNP3Config), ctypes.byref((tErrorValue)))
         if i16ErrorCode != 0:
             message = f"DNP3 Library API Function - DNP3IEC104LoadConfiguration() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-            print(message)    
-            break
+            print(message)
+            raise RuntimeError(message)
+
+            
 
         else:
             message = f"DNP3 Library API Function - DNP3IEC104LoadConfiguration() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
@@ -638,62 +642,58 @@ def main():
 
 
 
-        i16ErrorCode =  dnp3_lib.DNP3Start(myClient, ctypes.byref((tErrorValue)))
+        i16ErrorCode =  dnp3_lib.DNP3Start(self.myClient, ctypes.byref((tErrorValue)))
         if i16ErrorCode != 0:
             message = f"DNP3 Library API Function - DNP3Start() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-            print(message)    
-            break
+            print(message)
+            raise RuntimeError(message)    
+            
 
         else:
             message = f"DNP3 Library API Function - DNP3Start() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
             print(message) 
 
-        print("press x to exit")
+        # print("press x to exit")
 
-        while(True):
-            if keyboard.is_pressed('x'):
-                print("x pressed, exiting loop")
-                keyboard.release('x')
-                time.sleep(0.1)
-                break
-            elif keyboard.is_pressed('s'):
-                print("u pressed, send command called")
-                keyboard.release('s')
-                time.sleep(0.1)
-                sendCommand(myClient)
+        # while(True):
+        #     if keyboard.is_pressed('x'):
+        #         print("x pressed, exiting loop")
+        #         keyboard.release('x')
+        #         time.sleep(0.1)
+        #         break
+        #     elif keyboard.is_pressed('s'):
+        #         print("u pressed, send command called")
+        #         keyboard.release('s')
+        #         time.sleep(0.1)
+        #         sendCommand(myClient)
 
-            #Xprint("sleep called")
-            time.sleep(0.1)
+        #     #Xprint("sleep called")
+        #     time.sleep(0.1)
 
-        break
-            
-            
+    def stopMaster(self):     
+        tErrorValue =  ctypes.c_short()
 
-      
-
-
-
-    i16ErrorCode =  dnp3_lib.DNP3Stop(myClient, ctypes.byref((tErrorValue)))
-    if i16ErrorCode != 0:
-        message = f"DNP3 Library API Function - DNP3Stop() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message)        
-    else:
-        message = f"DNP3 Library API Function - DNP3Stop() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message) 
+        i16ErrorCode =  dnp3_lib.DNP3Stop(self.myClient, ctypes.byref((tErrorValue)))
+        if i16ErrorCode != 0:
+            message = f"DNP3 Library API Function - DNP3Stop() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message)
+        else:
+            message = f"DNP3 Library API Function - DNP3Stop() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message) 
 
 
 
-    i16ErrorCode =  dnp3_lib.DNP3Free(myClient, ctypes.byref((tErrorValue)))
-    if i16ErrorCode != 0:
-        message = f"DNP3 Library API Function - DNP3Free() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message)    
-    else:
-        message = f"DNP3 Library API Function - DNP3Free() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-        print(message) 
+        i16ErrorCode =  dnp3_lib.DNP3Free(self.myClient, ctypes.byref((tErrorValue)))
+        if i16ErrorCode != 0:
+            message = f"DNP3 Library API Function - DNP3Free() failed: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message)    
+        else:
+            message = f"DNP3 Library API Function - DNP3Free() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
+            print(message) 
 
 
-    print("Exiting the program...")
-    
+        print("Exiting the program...")
+        
 
 if __name__ == "__main__":
-    main()
+    client = DNP3_Master()
