@@ -11,7 +11,6 @@ from config import (
     SOLID_SERVER, RESOURCE_URL, OIDC_ISSUER, CSS_EMAIL, CSS_PASSWORD, CLIENT_ID, CLIENT_SECRET
 )
 
-
 # if SERVER_TCP_COMMUNICATION enabled tcp works else serial communication works 
 SERVER_TCP_COMMUNICATION  = 1
 
@@ -93,137 +92,6 @@ def cbDebug(u16ObjectId, ptDebugData, ptErrorValue):
         print(f"ErrorValue {ptDebugData.contents.tErrorValue}")
 
     print("", flush=True)
-
-    return i16ErrorCode
-
-# dnp3 update callback
-def cbUpdate(u16ObjectId, ptUpdateID, ptUpdateValue,ptUpdateParams,ptErrorValue):
-
-    i16ErrorCode = ctypes.c_short()
-    i16ErrorCode = 0   
-
-    print("************cbUpdate called*****************")
-    print(" Client ID : %u" % u16ObjectId)
-
-
-    if ptUpdateID.contents.eCommMode    ==  eCommunicationMode.COMM_SERIAL:    
-        print("Serial Port %u"% ptUpdateID.contents.u16SerialPortNumber)    
-    else :    
-        print("IP Address %s" % ptUpdateID.contents.ai8IPAddress)
-        print("\tPort %u" % ptUpdateID.contents.u16PortNumber)
-
-    print("\t Group ID :%u" % ptUpdateID.contents.eGroupID)
-    print("\t Server Address :%u" % ptUpdateID.contents.u16SlaveAddress)
-    print("\t Index No :%u" % ptUpdateID.contents.u16IndexNumber)
-    print(f" Datatype->{ptUpdateValue.contents.eDataType} Datasize->{ ptUpdateValue.contents.eDataSize}" )
-
-    #setup turtle info for solid
-    slave_id = ptUpdateID.contents.u16SlaveAddress
-    index = ptUpdateID.contents.u16IndexNumber
-    group = ptUpdateID.contents.eGroupID
-    #timestamp
-    ts = ptUpdateValue.contents.sTimeStamp
-    timestamp_str = f"{ts.u16Year:04}-{ts.u8Month:02}-{ts.u8Day:02}T{ts.u8Hour:02}:{ts.u8Minute:02}:{ts.u8Seconds:02}"
-
-    current_value = None
-    data_type_label = ""
-   
-    GroupID = ptUpdateID.contents.eGroupID
-    
-    if  GroupID in (eDNP3GroupID.BINARY_INPUT, eDNP3GroupID.DOUBLE_INPUT, eDNP3GroupID.BINARY_OUTPUT):
-        data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 1))
-        u8data = struct.unpack('B', data)[0] 
-        print(f" Data : {u8data}")
-
-        current_value = u8data
-        data_type_label = "Binary"
-
-    elif  GroupID in (eDNP3GroupID.COUNTER_INPUT, eDNP3GroupID.FRCOUNTER_INPUT):
-        data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
-        i32data = struct.unpack('i', data)[0]        
-        print(f" Data : {i32data}")
-
-        data_type_label = "Counter" if group == eDNP3GroupID.COUNTER else "FrozenCounter"
-        current_value = i32data
-
-    elif  GroupID in (eDNP3GroupID.ANALOG_INPUT, eDNP3GroupID.FRANALOG_INPUT, eDNP3GroupID.ANALOG_OUTPUTS):
-        if ptUpdateValue.contents.eDataType == eDataTypes.FLOAT32_DATA:
-            data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
-            f32data = struct.unpack('f', data)[0] 
-            print(f" Data : {f32data:.3f}")
-
-            data_type_label = "Int32" if group == eDNP3GroupID.FRANALOG_INPUT else "FrozenAnalog"
-            current_value = f32data
-
-        elif ptUpdateValue.contents.eDataType == eDataTypes.SIGNED_DWORD_DATA:
-             data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
-             i32data = struct.unpack('i', data)[0]        
-             print(f" Data : {i32data}")
-
-             data_type_label = "Int32"
-             current_value = i32data
-        else :
-            print(" Invalid datatype in update -  analog")
-
-    elif  GroupID in (eDNP3GroupID.OCTECT_STRING, eDNP3GroupID.VIRTUAL_TERMINAL_OUTPUT):
-        data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, ptUpdateValue.contents.eDataSize))
-        #sdata = struct.unpack('p', data)[0]        
-        print(f" Data : {data.decode("utf-8")}")
-    else:
-        print("\t Invalid Group ID")
-    
-    # --- Trigger Solid Update if we have valid data ---
-    if current_value is not None:
-        rdf_data = add_context(
-            slave_id=slave_id,
-            register=index,
-            function="DNP3_Update",
-            func_code=group,
-            value=current_value,
-            data_type=data_type_label,
-            notes=f"DNP3 Group {group} Index {index}",
-            timestamp=timestamp_str
-        )
-        
-        threading.Thread(target=append_to_solid, args=(OIDC_ISSUER, CLIENT_ID, CLIENT_SECRET, RESOURCE_URL, rdf_data), daemon=True).start()
-    
-
-    if ptUpdateValue.contents.sTimeStamp.u16Year != 0:
-        print(f" Date : {ptUpdateValue.contents.sTimeStamp.u8Day:02}-{ptUpdateValue.contents.sTimeStamp.u8Month:02}-{ptUpdateValue.contents.sTimeStamp.u16Year:04}  DOW -{ptUpdateValue.contents.sTimeStamp.u8DayoftheWeek}")
-        print(f" Time : {ptUpdateValue.contents.sTimeStamp.u8Hour:02}:{ptUpdateValue.contents.sTimeStamp.u8Minute:02}:{ptUpdateValue.contents.sTimeStamp.u8Seconds:02}:{ptUpdateValue.contents.sTimeStamp.u16MilliSeconds:03}")
-
-
-
-
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.ONLINE) == eDNP3QualityFlags.ONLINE:
-        print(" ONLINE")
-       
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.RESTART) == eDNP3QualityFlags.RESTART:
-        print(" RESTART")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.COMM_LOST) == eDNP3QualityFlags.COMM_LOST:
-        print(" COMM_LOST")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.REMOTE_FORCED) == eDNP3QualityFlags.REMOTE_FORCED:
-        print(" REMOTE_FORCED")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.LOCAL_FORCED) == eDNP3QualityFlags.LOCAL_FORCED:
-        print(" LOCAL_FORCED")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.CHATTER_FILTER) == eDNP3QualityFlags.CHATTER_FILTER:
-        print(" CHATTER_FILTER")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.ROLLOVER) == eDNP3QualityFlags.ROLLOVER:
-        print(" ROLLOVER")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.OVER_RANGE) == eDNP3QualityFlags.OVER_RANGE:
-        print(" OVER_RANGE")
-    
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.DISCONTINUITY) == eDNP3QualityFlags.DISCONTINUITY:
-        print(" DISCONTINUITY")    
-
-    if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.REFERENCE_ERR) == eDNP3QualityFlags.REFERENCE_ERR:
-        print(" REFERENCE_ERR")
 
     return i16ErrorCode
 
@@ -440,13 +308,13 @@ def sendCommand(myClient):
     if  'SERVER_TCP_COMMUNICATION' in globals():
         psDAID.eCommMode    =   eCommunicationMode.TCP_IP_MODE
         psDAID.u16PortNumber    =   20000
-        psDAID.ai8IPAddress =  "127.0.0.1".encode('utf-8')
+        psDAID.ai8IPAddress =  "10.1.114.34".encode('utf-8')
     else:
         psDAID.eCommMode    =   eCommunicationMode.COMM_SERIAL
         psDAID.u16SerialPortNumber  =   2
 
-    psDAID.eGroupID =   eDNP3GroupID.ANALOG_OUTPUTS
-    psDAID.u16SlaveAddress  =   1
+    psDAID.eGroupID =   eDNP3GroupID.BINARY_OUTPUT
+    psDAID.u16SlaveAddress  =   1024
     psDAID.u16IndexNumber   =   u16index
     psNewValue.eDataSize   =   eDataSizes.FLOAT32_SIZE
     psNewValue.eDataType   =   eDataTypes.FLOAT32_DATA
@@ -483,12 +351,13 @@ def sendCommand(myClient):
     else:
         message = f"DNP3 Library API Function - DNP3DirectOperate() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
         print(message) 
-_keep_alive = []
+
 #Master Class
 class DNP3_Master:
-    def __init__(self):
+    def __init__(self, solid_server=None):
         self._callback_wrappers = []
-        self.client = None
+        self.solid_server = solid_server
+        self.myClient = None
     
     def _wrap(self, callback_type, func):
         """Helper to wrap and persist callbacks."""
@@ -529,7 +398,7 @@ class DNP3_Master:
         sParameters.eAppFlag          =  eApplicationFlag.APP_CLIENT
         sParameters.ptReadCallback = self._wrap(DNP3ReadCallback, None)
         sParameters.ptWriteCallback = self._wrap(DNP3WriteCallback, None)
-        sParameters.ptUpdateCallback = self._wrap(DNP3UpdateCallback, cbUpdate)
+        sParameters.ptUpdateCallback = self._wrap(DNP3UpdateCallback, self.cbUpdate)
         sParameters.ptSelectCallback = self._wrap(DNP3ControlSelectCallback, None)
         sParameters.ptOperateCallback = self._wrap(DNP3ControlOperateCallback, None)
         sParameters.ptDebugCallback = self._wrap(DNP3DebugMessageCallback, cbDebug)
@@ -598,13 +467,13 @@ class DNP3_Master:
             
             arraypointer[0].eCommMode                     =   eCommunicationMode.TCP_IP_MODE
             # check computer configuration - TCP/IP Address
-            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.ai8ToIPAddress = "127.0.0.1".encode('utf-8')  # Server works on every interface
+            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.ai8ToIPAddress = "10.1.114.34".encode('utf-8')  # Server works on every interface
             arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.u16PortNumber   =   20000
 
 
         #Server protocol settings
-        arraypointer[0].sClientProtSet.u16MasterAddress			=   2
-        arraypointer[0].sClientProtSet.u16SlaveAddress            =   1
+        arraypointer[0].sClientProtSet.u16MasterAddress			=   1
+        arraypointer[0].sClientProtSet.u16SlaveAddress            =   1024
         arraypointer[0].sClientProtSet.u32LinkLayerTimeout        =   10000
         arraypointer[0].sClientProtSet.u32ApplicationTimeout      =   20000
         arraypointer[0].sClientProtSet.u32Class0123pollInterval   =   60000
@@ -693,7 +562,195 @@ class DNP3_Master:
 
 
         print("Exiting the program...")
+
+    def cbUpdate(self, u16ObjectId, ptUpdateID, ptUpdateValue,ptUpdateParams,ptErrorValue):
+
+        i16ErrorCode = ctypes.c_short()
+        i16ErrorCode = 0   
+
+        print("************cbUpdate called*****************")
+        print(" Client ID : %u" % u16ObjectId)
+
+
+        if ptUpdateID.contents.eCommMode    ==  eCommunicationMode.COMM_SERIAL:    
+            print("Serial Port %u"% ptUpdateID.contents.u16SerialPortNumber)    
+        else :    
+            print("IP Address %s" % ptUpdateID.contents.ai8IPAddress)
+            print("\tPort %u" % ptUpdateID.contents.u16PortNumber)
+
+        print("\t Group ID :%u" % ptUpdateID.contents.eGroupID)
+        print("\t Server Address :%u" % ptUpdateID.contents.u16SlaveAddress)
+        print("\t Index No :%u" % ptUpdateID.contents.u16IndexNumber)
+        print(f" Datatype->{ptUpdateValue.contents.eDataType} Datasize->{ ptUpdateValue.contents.eDataSize}" )
+
+        #setup turtle info for solid
+        slave_id = ptUpdateID.contents.u16SlaveAddress
+        index = ptUpdateID.contents.u16IndexNumber
+        group = ptUpdateID.contents.eGroupID
+        #timestamp
+        ts = ptUpdateValue.contents.sTimeStamp
+        timestamp_str = f"{ts.u16Year:04}-{ts.u8Month:02}-{ts.u8Day:02}T{ts.u8Hour:02}:{ts.u8Minute:02}:{ts.u8Seconds:02}"
+
+        current_value = None
+        data_type_label = ""
+    
+        GroupID = ptUpdateID.contents.eGroupID
         
+        if  GroupID in (eDNP3GroupID.BINARY_INPUT, eDNP3GroupID.DOUBLE_INPUT, eDNP3GroupID.BINARY_OUTPUT):
+            data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 1))
+            u8data = struct.unpack('B', data)[0] 
+            print(f" Data : {u8data}")
+
+            current_value = u8data
+            data_type_label = "Binary"
+
+        elif  GroupID in (eDNP3GroupID.COUNTER_INPUT, eDNP3GroupID.FRCOUNTER_INPUT):
+            data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
+            i32data = struct.unpack('i', data)[0]        
+            print(f" Data : {i32data}")
+
+            data_type_label = "Counter" if group == eDNP3GroupID.COUNTER else "FrozenCounter"
+            current_value = i32data
+
+        elif  GroupID in (eDNP3GroupID.ANALOG_INPUT, eDNP3GroupID.FRANALOG_INPUT, eDNP3GroupID.ANALOG_OUTPUTS):
+            if ptUpdateValue.contents.eDataType == eDataTypes.FLOAT32_DATA:
+                data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
+                f32data = struct.unpack('f', data)[0] 
+                print(f" Data : {f32data:.3f}")
+
+                data_type_label = "Int32" if group == eDNP3GroupID.FRANALOG_INPUT else "FrozenAnalog"
+                current_value = f32data
+
+            elif ptUpdateValue.contents.eDataType == eDataTypes.SIGNED_DWORD_DATA:
+                data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, 4))
+                i32data = struct.unpack('i', data)[0]        
+                print(f" Data : {i32data}")
+
+                data_type_label = "Int32"
+                current_value = i32data
+            else :
+                print(" Invalid datatype in update -  analog")
+
+        elif  GroupID in (eDNP3GroupID.OCTECT_STRING, eDNP3GroupID.VIRTUAL_TERMINAL_OUTPUT):
+            data = bytearray(ctypes.string_at(ptUpdateValue.contents.pvData, ptUpdateValue.contents.eDataSize))
+            #sdata = struct.unpack('p', data)[0]        
+            print(f" Data : {data.decode("utf-8")}")
+        else:
+            print("\t Invalid Group ID")
+        
+        # --- Trigger Solid Update if we have valid data ---
+        if current_value is not None and self.solid_server:
+            rdf_data = add_context(
+                slave_id=slave_id,
+                register=index,
+                function="DNP3_Update",
+                func_code=group,
+                value=current_value,
+                data_type=data_type_label,
+                notes=f"DNP3 Group {group} Index {index}",
+                timestamp=timestamp_str
+            )
+            
+            threading.Thread(target=self.solid_server.append, args=(self.solid_server.resource_url, rdf_data), daemon=True).start()
+        
+
+        if ptUpdateValue.contents.sTimeStamp.u16Year != 0:
+            print(f" Date : {ptUpdateValue.contents.sTimeStamp.u8Day:02}-{ptUpdateValue.contents.sTimeStamp.u8Month:02}-{ptUpdateValue.contents.sTimeStamp.u16Year:04}  DOW -{ptUpdateValue.contents.sTimeStamp.u8DayoftheWeek}")
+            print(f" Time : {ptUpdateValue.contents.sTimeStamp.u8Hour:02}:{ptUpdateValue.contents.sTimeStamp.u8Minute:02}:{ptUpdateValue.contents.sTimeStamp.u8Seconds:02}:{ptUpdateValue.contents.sTimeStamp.u16MilliSeconds:03}")
+
+
+
+
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.ONLINE) == eDNP3QualityFlags.ONLINE:
+            print(" ONLINE")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.RESTART) == eDNP3QualityFlags.RESTART:
+            print(" RESTART")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.COMM_LOST) == eDNP3QualityFlags.COMM_LOST:
+            print(" COMM_LOST")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.REMOTE_FORCED) == eDNP3QualityFlags.REMOTE_FORCED:
+            print(" REMOTE_FORCED")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.LOCAL_FORCED) == eDNP3QualityFlags.LOCAL_FORCED:
+            print(" LOCAL_FORCED")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.CHATTER_FILTER) == eDNP3QualityFlags.CHATTER_FILTER:
+            print(" CHATTER_FILTER")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.ROLLOVER) == eDNP3QualityFlags.ROLLOVER:
+            print(" ROLLOVER")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.OVER_RANGE) == eDNP3QualityFlags.OVER_RANGE:
+            print(" OVER_RANGE")
+        
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.DISCONTINUITY) == eDNP3QualityFlags.DISCONTINUITY:
+            print(" DISCONTINUITY")    
+
+        if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.REFERENCE_ERR) == eDNP3QualityFlags.REFERENCE_ERR:
+            print(" REFERENCE_ERR")
+
+        return i16ErrorCode
+    
+    def sendCommand(self):
+        tErrorValue = ctypes.c_short(0)
+        
+        print("\n--- Typhoon HIL Command (Double-Point Sync) ---")
+        index = int(input("Enter Binary Index: "))
+        choice = int(input("Enter command (1 for ON, 0 for OFF): "))
+        
+        # 1. DNP3 Double-bit values: 1 = OFF, 2 = ON
+        db_value = 2 if choice == 1 else 1
+        u8Data = ctypes.c_uint8(db_value)
+
+        psDAID = sDNP3DataAttributeID()
+        psValue = sDNP3DataAttributeData()
+        psParams = sDNP3CommandParameters()
+
+        # 2. Setup ID
+        psDAID.eCommMode = eCommunicationMode.TCP_IP_MODE
+        psDAID.ai8IPAddress = "10.1.114.34".encode('utf-8')
+        psDAID.u16PortNumber = 20000
+        psDAID.u16SlaveAddress = 1024 
+        psDAID.u16IndexNumber = index
+        psDAID.eGroupID = 10 # BINARY_OUTPUT
+
+        # 3. THE FIX: Match Type 2 (DOUBLE_POINT_DATA)
+        psValue.eDataType = 2  # This bypassed -1526
+        psValue.eDataSize = 1  # DOUBLE_POINT_SIZE (typically 1 byte in this lib)
+        psValue.tQuality = eDNP3QualityFlags.GOOD
+        psValue.pvData = ctypes.cast(ctypes.pointer(u8Data), ctypes.c_void_p)
+
+        # 4. Command Parameters (The Protocol Action)
+        psParams.eCommandVariation = 1 # CROB_G12V1
+        psParams.eOPType = 3 if choice == 1 else 4 # Latch On / Latch Off
+        psParams.u8Count = 1
+        psParams.u32ONtime = 100
+        psParams.u32OFFtime = 100
+
+        # Timestamp (Required for Operate)
+        now = time.time()
+        ti = time.localtime(now)
+        psValue.sTimeStamp.u8Day, psValue.sTimeStamp.u8Month = ti.tm_mday, ti.tm_mon
+        psValue.sTimeStamp.u16Year = ti.tm_year
+        psValue.sTimeStamp.u8Hour, psValue.sTimeStamp.u8Minute = ti.tm_hour, ti.tm_min
+        psValue.sTimeStamp.u8Seconds = ti.tm_sec
+
+        # 5. EXECUTE
+        print(f"Sending Command to Index {index} using Double-Point Logic...")
+        i16ErrorCode = dnp3_lib.DNP3DirectOperate(
+            self.myClient, 
+            ctypes.byref(psDAID), 
+            ctypes.byref(psValue),
+            ctypes.byref(psParams),
+            ctypes.byref(tErrorValue)
+        )
+
+        if i16ErrorCode == 0:
+            print("SUCCESS: Command accepted and sent to Typhoon HIL!")
+        else:
+            print(f"Failed: {i16ErrorCode} (Detail: {tErrorValue.value})")
 
 if __name__ == "__main__":
     client = DNP3_Master()

@@ -1,13 +1,16 @@
 from master import DNP3_Master
+from solid_server import SolidServer
 import time
 import sys
 
-async def main():
+def main():
     try:
-        client = DNP3_Master()
+        solid_server = SolidServer()
+        client = DNP3_Master(solid_server=solid_server)
         client.start()
         print("Master started successfully. Press Ctrl+C to stop.")
         while True:
+            client.sendCommand()
             time.sleep(1)
     except KeyboardInterrupt:
         print("Stopping master...")
@@ -16,6 +19,7 @@ async def main():
         print(f"An error occurred: {e}")
     finally:
         sys.exit()
+
 
 if __name__ == "__main__":
     main()
