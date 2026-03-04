@@ -6,6 +6,7 @@ import sys
 def main():
     try:
         solid_server = SolidServer()
+        solid_server.delete_container("https://ec2-34-201-119-230.compute-1.amazonaws.com/char/dnp3/")
         client = DNP3_Master(solid_server=solid_server)
         client.start()
         print("Master started successfully. Press Ctrl+C to stop.")

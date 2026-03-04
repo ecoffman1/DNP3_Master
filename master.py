@@ -2,7 +2,7 @@ import ctypes
 import time
 import struct
 import sys
-from utils import add_context
+from rdf import add_context
 import keyboard
 import threading
 from dnp3protocol.dnp3api import *
@@ -478,7 +478,7 @@ class DNP3_Master:
         arraypointer[0].sClientProtSet.u32ApplicationTimeout      =   20000
         arraypointer[0].sClientProtSet.u32Class0123pollInterval   =   60000
         arraypointer[0].sClientProtSet.u32Class123pollInterval    =   1000
-        arraypointer[0].sClientProtSet.u32Class0pollInterval      =   0                              #CLASS 0 poll interval in milliSeconds (minimum 1000ms - to max)
+        arraypointer[0].sClientProtSet.u32Class0pollInterval      =   3000                              #CLASS 0 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class1pollInterval      =   0                              #CLASS 1 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class2pollInterval      =   0                              #CLASS 2 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class3pollInterval      =   0                              #CLASS 3 poll interval in milliSeconds (minimum 1000ms - to max)
@@ -651,7 +651,7 @@ class DNP3_Master:
                 timestamp=timestamp_str
             )
             
-            threading.Thread(target=self.solid_server.append, args=(self.solid_server.resource_url, rdf_data), daemon=True).start()
+            threading.Thread(target=self.solid_server.append, args=(rdf_data,), daemon=True).start()
         
 
         if ptUpdateValue.contents.sTimeStamp.u16Year != 0:

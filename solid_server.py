@@ -1,5 +1,7 @@
 import requests
-from handlers.solid_handler import *
+from urllib.parse import urljoin
+from solid_client_credentials import SolidClientCredentialsAuth, DpopTokenProvider
+from rdflib import Graph, Namespace, URIRef, Literal
 from config import (
     SOLID_SERVER, RESOURCE_URL, OIDC_ISSUER, CSS_EMAIL, CSS_PASSWORD, CLIENT_ID, CLIENT_SECRET
 )
@@ -44,7 +46,7 @@ class SolidServer:
         self.token_provider = DpopTokenProvider(
             issuer_url=self.oidc_issuer, client_id=self.client_credentials.client_id, client_secret=self.client_credentials.client_secret
         )
-        auth = auth = SolidClientCredentialsAuth(self.token_provider)
+        auth = SolidClientCredentialsAuth(self.token_provider)
 
 
 
@@ -59,33 +61,88 @@ class SolidServer:
         else:
             return f"Failed to save data ({response.status_code}): {response.text}"
 
-    def append(self,resource_url, rdf_data):
-        # First, retrieve the existing data
-        get_response = requests.get(resource_url, headers={"Accept": "text/turtle"},verify=False)
+    def append(self, rdf_graph):
+        try:
+            subject_uri = str(next(rdf_graph.subjects()))
+            parts = subject_uri.split('/')
+            
+            if 'slave' in parts:
+                slave_idx = parts.index('slave')
+                base_slave_path = "/".join(parts[:slave_idx+2])
+                target_url = f"{base_slave_path}/data.ttl"
+            else:
+                target_url = f"{subject_uri.rsplit('/', 1)[0]}/data.ttl"
+            
+            prefixes = "\n".join([f"PREFIX {p}: <{n}>" for p, n in rdf_graph.namespaces()])
+            triples = " .\n".join([f"{s.n3()} {p.n3()} {o.n3()}" for s, p, o in rdf_graph])
+            sparql_query = f"{prefixes}\nINSERT DATA {{ {triples} }}"
+            
+            headers = {
+                "Content-Type": "application/sparql-update",
+                "Link": '<http://www.w3.org/ns/ldp#Resource>; rel="type"'
+            }
+            
+            response = requests.patch(
+                target_url,
+                headers=headers,
+                data=sparql_query,
+                verify=False
+            )
 
-        if get_response.status_code == 200:
-            existing_data = get_response.text
-        else:
-            existing_data = ""  # If the resource doesn't exist, create new data
+            if response.status_code in [200, 201, 204, 205]:
+                print(f"Success: {target_url}")
+            else:
+                print(f"Error {response.status_code}: {response.text}")
+                
+            return response.status_code
 
-        # Append new RDF data
-        updated_data = existing_data + "\n" + rdf_data
-
-        # Send a PUT request with the updated RDF data
-        headers = {"Content-Type": "text/turtle"}
-        put_response = requests.put(resource_url, headers=headers, data=updated_data,verify=False)
-
-        if put_response.status_code in [200, 201, 204, 205]:
-            print("successful upload")
-            return "Data successfully updated in Solid Pod!"
-        else:
-            return f"Failed to update data ({put_response.status_code}): {put_response.text}"
+        except StopIteration:
+            return None
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
 
     def get_solid_data(self, resource_url):
         response = requests.get(resource_url, auth=self.auth)
         print(response.text)
         if response.status_code == 200:
+            print(response.text)
             return response.text
         else:
             return f"Failed to fetch data ({response.status_code}): {response.text}"
+    
+    def delete_resource(self, url):
+        """Deletes a specific resource or container from the Pod."""
+        response = requests.delete(
+            url,
+            verify=False
+        )
+        if response.status_code in [200, 204]:
+            print(f"Successfully deleted: {url}")
+        else:
+            print(f"Failed to delete {url}: {response.status_code} - {response.text}")
+
+    def delete_container(self, container_url):
+        if not container_url.endswith('/'):
+            container_url += '/'
+
+        # Removed auth=self.auth
+        response = requests.get(container_url, verify=False, 
+                                headers={"Accept": "text/turtle"})
+        
+        if response.status_code == 200:
+            g = Graph()
+            g.parse(data=response.text, format="turtle", publicID=container_url)
+            LDP = Namespace("http://www.w3.org/ns/ldp#")
+            
+            for _, _, child_url in g.triples((None, LDP.contains, None)):
+                full_child_url = urljoin(container_url, str(child_url))
+                if full_child_url.endswith('/'):
+                    self.delete_container(full_child_url)
+                else:
+                    # Removed auth=self.auth
+                    requests.delete(full_child_url, verify=False)
+            
+        # Removed auth=self.auth
+        return requests.delete(container_url, verify=False).status_code
     
