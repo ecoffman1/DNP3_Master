@@ -1,21 +1,16 @@
 import ctypes 
 import time
 import struct
-import sys
 from rdf import add_context
-import keyboard
 import threading
 from dnp3protocol.dnp3api import *
-from handlers.solid_handler import *
-from config import (
-    SOLID_SERVER, RESOURCE_URL, OIDC_ISSUER, CSS_EMAIL, CSS_PASSWORD, CLIENT_ID, CLIENT_SECRET
-)
+
 
 # if SERVER_TCP_COMMUNICATION enabled tcp works else serial communication works 
 SERVER_TCP_COMMUNICATION  = 1
 
 # enbale to view traffic
-VIEW_TRAFFIC = 1
+# VIEW_TRAFFIC = 1
 
 SERIAL_PORT_NUMBER  = 2
 
@@ -352,13 +347,18 @@ def sendCommand(myClient):
         message = f"DNP3 Library API Function - DNP3DirectOperate() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
         print(message) 
 
-#Master Class
-class DNP3_Master:
-    def __init__(self, solid_server=None):
+#Client Class
+class DNP3_Client:
+    def __init__(self, solid_server=None, device_name="Unknown", slave_address=1,port=20000, ip_addr=0):
         self._callback_wrappers = []
         self.solid_server = solid_server
         self.myClient = None
-    
+        self.device_name = device_name
+        self.ip_addr = ip_addr
+        self.port = port
+        self.slave_address = slave_address
+        print(port)
+
     def _wrap(self, callback_type, func):
         """Helper to wrap and persist callbacks."""
         if func is None:
@@ -368,15 +368,6 @@ class DNP3_Master:
         return wrapper
     
     def start(self):
-        global _keep_alive
-        #Setting up Solid Credintials
-        account = CssAccount(css_base_url=SOLID_SERVER, email=CSS_EMAIL, password=CSS_PASSWORD)
-        client_credentials = get_client_credentials(account)
-
-        CLIENT_ID = client_credentials.client_id
-        CLIENT_SECRET = client_credentials.client_secret
-
-
         print(" \t\t**** DNP3 Protocol Client Library Test ****")
         # Check library version against the library header file
         if dnp3_lib.DNP3GetLibraryVersion().decode("utf-8") != DNP3_VERSION:
@@ -467,13 +458,13 @@ class DNP3_Master:
             
             arraypointer[0].eCommMode                     =   eCommunicationMode.TCP_IP_MODE
             # check computer configuration - TCP/IP Address
-            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.ai8ToIPAddress = "10.1.114.34".encode('utf-8')  # Server works on every interface
-            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.u16PortNumber   =   20000
+            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.ai8ToIPAddress = self.ip_addr.encode('utf-8')  # Server works on every interface
+            arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.u16PortNumber   =   self.port
 
 
         #Server protocol settings
         arraypointer[0].sClientProtSet.u16MasterAddress			=   1
-        arraypointer[0].sClientProtSet.u16SlaveAddress            =   1024
+        arraypointer[0].sClientProtSet.u16SlaveAddress            =   self.slave_address
         arraypointer[0].sClientProtSet.u32LinkLayerTimeout        =   10000
         arraypointer[0].sClientProtSet.u32ApplicationTimeout      =   20000
         arraypointer[0].sClientProtSet.u32Class0123pollInterval   =   60000
@@ -641,13 +632,11 @@ class DNP3_Master:
         # --- Trigger Solid Update if we have valid data ---
         if current_value is not None and self.solid_server:
             rdf_data = add_context(
-                slave_id=slave_id,
-                register=index,
-                function="DNP3_Update",
-                func_code=group,
+                device_name=self.device_name,
+                group=group,
+                index=index,
                 value=current_value,
                 data_type=data_type_label,
-                notes=f"DNP3 Group {group} Index {index}",
                 timestamp=timestamp_str
             )
             
@@ -657,9 +646,6 @@ class DNP3_Master:
         if ptUpdateValue.contents.sTimeStamp.u16Year != 0:
             print(f" Date : {ptUpdateValue.contents.sTimeStamp.u8Day:02}-{ptUpdateValue.contents.sTimeStamp.u8Month:02}-{ptUpdateValue.contents.sTimeStamp.u16Year:04}  DOW -{ptUpdateValue.contents.sTimeStamp.u8DayoftheWeek}")
             print(f" Time : {ptUpdateValue.contents.sTimeStamp.u8Hour:02}:{ptUpdateValue.contents.sTimeStamp.u8Minute:02}:{ptUpdateValue.contents.sTimeStamp.u8Seconds:02}:{ptUpdateValue.contents.sTimeStamp.u16MilliSeconds:03}")
-
-
-
 
         if(ptUpdateValue.contents.tQuality & eDNP3QualityFlags.ONLINE) == eDNP3QualityFlags.ONLINE:
             print(" ONLINE")
@@ -752,5 +738,18 @@ class DNP3_Master:
         else:
             print(f"Failed: {i16ErrorCode} (Detail: {tErrorValue.value})")
 
-if __name__ == "__main__":
-    client = DNP3_Master()
+
+#Master Class
+class DNP3_Master:
+    def __init__(self, solid_server):
+        self.clients = []
+        self.solid_server = solid_server
+
+    def create_client(self, device_name="Unknown", slave_address=1,port=20000, ip_addr=0):
+        client = DNP3_Client(solid_server=self.solid_server, device_name=device_name,slave_address=slave_address,ip_addr=ip_addr, port=port)
+        self.clients.append(client)
+    
+    def start(self):
+        for client in self.clients:
+            client.start()
+        

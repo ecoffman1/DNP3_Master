@@ -1,9 +1,7 @@
 import os
-import urllib3
 from dotenv import load_dotenv
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 load_dotenv()
-from handlers.solid_handler import *
 
 # Modbus Configuration
 MODBUS_HOST = os.getenv("MODBUS_HOST", "localhost")
@@ -21,13 +19,4 @@ OIDC_ISSUER = os.getenv("OIDC_ISSUER")
 CSS_EMAIL = os.getenv("CSS_EMAIL")
 CSS_PASSWORD = os.getenv("CSS_PASSWORD")
 
-account = CssAccount(css_base_url=SOLID_SERVER, email=CSS_EMAIL, password=CSS_PASSWORD)
 
-try:
-    client_credentials = get_client_credentials(account)
-    CLIENT_ID = client_credentials.client_id
-    CLIENT_SECRET = client_credentials.client_secret
-    print(f"Client ID: {CLIENT_ID}")
-except Exception as e:
-    print(f"Error fetching client credentials: {e}")
-    

@@ -1,0 +1,71 @@
+{
+  "Wind_Power_Plant": {
+    "ip_address": "10.1.114.34",
+    "port": 20004,
+    "local_address": 1024,
+    "groups": {
+      "1": {
+        "0": "Enable"
+      },
+      "30": {
+        "0": "Frequency",
+        "1": "Voltage",
+        "2": "Active_Power",
+        "3": "RPM"
+      }
+    }
+  },
+  "Diesel_Generator": {
+    "ip_address": "10.1.114.34",
+    "local_address": 1023,
+    "port": 20003,
+    "groups": {
+      "1": {
+        "0": "Enable"
+      },
+      "30": {
+        "0": "Frequency",
+        "1": "Voltage",
+        "2": "Active_Power",
+        "3": "Generator_Line_Voltage",
+        "4": "Generator_Speed"
+      }
+    }
+  },
+  "PV_Power_Plant": {
+    "ip_address": "10.1.114.34",
+    "local_address": 1022,
+    "port": 20002,
+    "groups": {
+      "1": {
+        "0": "Enable"
+      },
+      "30": {
+        "0": "Voltage",
+        "1": "Frequency",
+        "2": "Active_Power",
+        "3": "Available_Power",
+        "4": "Power_Curtailment_Status"
+      }
+    }
+  },
+  "Battery": {
+    "ip_address": "10.1.114.34",
+    "local_address": 1021,
+    "port": 20001,
+    "groups": {
+      "1": {
+        "0": "Enable"
+      },
+      "30": {
+        "0": "Voltage",
+        "1": "Frequency",
+        "2": "Active_Power",
+        "3": "SOC",
+        "4": "SOH",
+        "5": "Battery_Voltage",
+        "6": "Battery_Current"
+      }
+    }
+  }
+}
