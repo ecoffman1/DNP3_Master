@@ -5,16 +5,15 @@ with open("C:\\Users\\ethan\\Documents\\Honors_Thesis\\DNP3_Master\\component_co
 
 def getComponentConfig():
     return {
-        name: {
+        int(address): {
             "ip": info["ip_address"], 
-            "local_address": info["local_address"],
             "port": info["port"],
         } 
-        for name, info in component_config.items()
+        for address, info in component_config.items()
     }
 
 def getComponentMappings():
     return {
-        name: info["groups"] 
-        for name, info in component_config.items()
+        int(address): info
+        for address, info in component_config.items()
     }

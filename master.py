@@ -348,16 +348,15 @@ def sendCommand(myClient):
         print(message) 
 
 #Client Class
-class DNP3_Client:
-    def __init__(self, solid_server=None, device_name="Unknown", slave_address=1,port=20000, ip_addr=0):
+class DNP3_Master:
+    def __init__(self, solid_server=None, ip_addr=0, port=20000, devices=[]):
         self._callback_wrappers = []
         self.solid_server = solid_server
         self.myClient = None
-        self.device_name = device_name
+
         self.ip_addr = ip_addr
         self.port = port
-        self.slave_address = slave_address
-        print(port)
+        self.devices = devices
 
     def _wrap(self, callback_type, func):
         """Helper to wrap and persist callbacks."""
@@ -452,24 +451,20 @@ class DNP3_Client:
 
         arraypointer = (sClientObject * sDNP3Config.sDNP3ClientSet.u16NoofClient )()
         sDNP3Config.sDNP3ClientSet.psClientObjects  = ctypes.cast(arraypointer, ctypes.POINTER(sClientObject))
-
-
         if  'SERVER_TCP_COMMUNICATION' in globals():
-            
             arraypointer[0].eCommMode                     =   eCommunicationMode.TCP_IP_MODE
             # check computer configuration - TCP/IP Address
             arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.ai8ToIPAddress = self.ip_addr.encode('utf-8')  # Server works on every interface
             arraypointer[0].sClientCommunicationSet.sEthernetCommsSet.u16PortNumber   =   self.port
 
-
         #Server protocol settings
         arraypointer[0].sClientProtSet.u16MasterAddress			=   1
-        arraypointer[0].sClientProtSet.u16SlaveAddress            =   self.slave_address
+        arraypointer[0].sClientProtSet.u16SlaveAddress            =   self.devices[0].local_address
         arraypointer[0].sClientProtSet.u32LinkLayerTimeout        =   10000
         arraypointer[0].sClientProtSet.u32ApplicationTimeout      =   20000
         arraypointer[0].sClientProtSet.u32Class0123pollInterval   =   60000
         arraypointer[0].sClientProtSet.u32Class123pollInterval    =   1000
-        arraypointer[0].sClientProtSet.u32Class0pollInterval      =   3000                              #CLASS 0 poll interval in milliSeconds (minimum 1000ms - to max)
+        arraypointer[0].sClientProtSet.u32Class0pollInterval      =   1000                              #CLASS 0 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class1pollInterval      =   0                              #CLASS 1 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class2pollInterval      =   0                              #CLASS 2 poll interval in milliSeconds (minimum 1000ms - to max)
         arraypointer[0].sClientProtSet.u32Class3pollInterval      =   0                              #CLASS 3 poll interval in milliSeconds (minimum 1000ms - to max)
@@ -485,7 +480,7 @@ class DNP3_Client:
         sDNP3Config.sDNP3ClientSet.bAutoGenDNP3DataObjects  = True
         #Define number of objects
         arraypointer[0].u16NoofObject                              =   0
-        #Allocate memory for objects
+        #Allocate memory for objects0
         arraypointer[0].psDNP3Objects = None
 
         i16ErrorCode =  dnp3_lib.DNP3LoadConfiguration(self.myClient, ctypes.byref(sDNP3Config), ctypes.byref((tErrorValue)))
@@ -632,7 +627,7 @@ class DNP3_Client:
         # --- Trigger Solid Update if we have valid data ---
         if current_value is not None and self.solid_server:
             rdf_data = add_context(
-                device_name=self.device_name,
+                local_address=slave_id,
                 group=group,
                 index=index,
                 value=current_value,
@@ -738,18 +733,10 @@ class DNP3_Client:
         else:
             print(f"Failed: {i16ErrorCode} (Detail: {tErrorValue.value})")
 
-
 #Master Class
-class DNP3_Master:
-    def __init__(self, solid_server):
-        self.clients = []
-        self.solid_server = solid_server
-
-    def create_client(self, device_name="Unknown", slave_address=1,port=20000, ip_addr=0):
-        client = DNP3_Client(solid_server=self.solid_server, device_name=device_name,slave_address=slave_address,ip_addr=ip_addr, port=port)
-        self.clients.append(client)
+class DNP3_Device:
+    def __init__(self, local_address, port):
+        self.local_address = local_address
+        self.port = port
     
-    def start(self):
-        for client in self.clients:
-            client.start()
         

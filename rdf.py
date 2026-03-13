@@ -8,11 +8,12 @@ from config import (
 device_mappings = component_config_loader.getComponentMappings()
 DNP3 = Namespace(f"{RESOURCE_URL}/#")
 
-def add_context(device_name, group, index, value, data_type, timestamp):
+def add_context(local_address, group, index, value, data_type, timestamp):
     g = Graph()
     
-    device_mapping = device_mappings[device_name]
-    field = device_mapping[str(group)][str(index)]
+    device_mapping = device_mappings[local_address]
+    device_name = device_mapping["device_name"]
+    field = device_mapping["groups"][str(group)][str(index)]
     # NEW URI STRUCTURE: Includes Group (func_code) to prevent collisions
     # Path: .../slave/1024/timestamp/group_30/reg_0
     reading_id = f"{timestamp}/{field}/"
