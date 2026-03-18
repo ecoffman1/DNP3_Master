@@ -349,14 +349,17 @@ def sendCommand(myClient):
 
 #Client Class
 class DNP3_Master:
-    def __init__(self, solid_server=None, ip_addr=0, port=20000, devices=[]):
+    def __init__(self, solid_server=None, ip_addr=0, port=20000, slave_addr=1024):
         self._callback_wrappers = []
         self.solid_server = solid_server
         self.myClient = None
 
         self.ip_addr = ip_addr
         self.port = port
-        self.devices = devices
+        self.slave_addr = slave_addr
+        self.buffer = {}
+        self.buffer_lock = threading.Lock()
+        threading.Thread(target=self.upload_buffer, daemon=True).start()
 
     def _wrap(self, callback_type, func):
         """Helper to wrap and persist callbacks."""
@@ -459,7 +462,7 @@ class DNP3_Master:
 
         #Server protocol settings
         arraypointer[0].sClientProtSet.u16MasterAddress			=   1
-        arraypointer[0].sClientProtSet.u16SlaveAddress            =   self.devices[0].local_address
+        arraypointer[0].sClientProtSet.u16SlaveAddress            =   self.slave_addr
         arraypointer[0].sClientProtSet.u32LinkLayerTimeout        =   10000
         arraypointer[0].sClientProtSet.u32ApplicationTimeout      =   20000
         arraypointer[0].sClientProtSet.u32Class0123pollInterval   =   60000
@@ -506,7 +509,10 @@ class DNP3_Master:
 
         else:
             message = f"DNP3 Library API Function - DNP3Start() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
-            print(message) 
+            print(message)
+
+
+
 
         # print("press x to exit")
 
@@ -546,7 +552,7 @@ class DNP3_Master:
             message = f"DNP3 Library API Function - DNP3Free() success: {i16ErrorCode} - {errorcodestring(i16ErrorCode)}, {tErrorValue.value} - {errorvaluestring(tErrorValue)}"
             print(message) 
 
-
+    
         print("Exiting the program...")
 
     def cbUpdate(self, u16ObjectId, ptUpdateID, ptUpdateValue,ptUpdateParams,ptErrorValue):
@@ -626,16 +632,7 @@ class DNP3_Master:
         
         # --- Trigger Solid Update if we have valid data ---
         if current_value is not None and self.solid_server:
-            rdf_data = add_context(
-                local_address=slave_id,
-                group=group,
-                index=index,
-                value=current_value,
-                data_type=data_type_label,
-                timestamp=timestamp_str
-            )
-            
-            threading.Thread(target=self.solid_server.append, args=(rdf_data,), daemon=True).start()
+            self.fill_buffer(slave_id=slave_id, group=group,index=index,value=current_value,data_type=data_type_label,timestamp_str=timestamp_str)
         
 
         if ptUpdateValue.contents.sTimeStamp.u16Year != 0:
@@ -674,12 +671,56 @@ class DNP3_Master:
 
         return i16ErrorCode
     
-    def sendCommand(self):
+    def fill_buffer(self, slave_id, group,index, value, data_type, timestamp_str):
+        if not slave_id in self.buffer:
+            self.buffer[slave_id] = {}
+
+        if not group in self.buffer[slave_id]:
+            self.buffer[slave_id][group] = {}
+
+        if not index in self.buffer[slave_id][group]:
+            self.buffer[slave_id][group][index] = {"values":[],"timestamps":[],"data_type":data_type}
+
+        with self.buffer_lock:
+            self.buffer[slave_id][group][index]["values"].append(value)
+            self.buffer[slave_id][group][index]["timestamps"].append(timestamp_str)
+
+
+        
+        pass
+
+    def upload_buffer(self):
+        time.sleep(60)
+        for slave_id, slave_dict in self.buffer.items():
+            for group, group_dict in slave_dict.items():
+                for index, index_dict in group_dict.items():
+                    with self.buffer_lock:
+                        index_copy = index_dict.copy()
+                        index_dict["values"] = []
+                        index_dict["timestamps"] = []
+                    if len(index_copy["values"]) == 0:
+                        print("NOT ENOUGH VALUES \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                        continue
+                    rdf_data = add_context(
+                        local_address=slave_id,
+                        group=group,
+                        index=index,
+                        value=index_copy["values"],
+                        data_type=index_copy["data_type"],
+                        timestamp=index_copy["timestamps"]
+                    )
+
+                    threading.Thread(target=self.solid_server.append, args=(rdf_data,), daemon=True).start()
+
+        self.upload_buffer()
+
+    
+    def sendCommand(self, index, signal):
         tErrorValue = ctypes.c_short(0)
         
         print("\n--- Typhoon HIL Command (Double-Point Sync) ---")
-        index = int(input("Enter Binary Index: "))
-        choice = int(input("Enter command (1 for ON, 0 for OFF): "))
+        index = index
+        choice = signal
         
         # 1. DNP3 Double-bit values: 1 = OFF, 2 = ON
         db_value = 2 if choice == 1 else 1
@@ -733,10 +774,5 @@ class DNP3_Master:
         else:
             print(f"Failed: {i16ErrorCode} (Detail: {tErrorValue.value})")
 
-#Master Class
-class DNP3_Device:
-    def __init__(self, local_address, port):
-        self.local_address = local_address
-        self.port = port
-    
+
         

@@ -14,15 +14,14 @@ def add_context(local_address, group, index, value, data_type, timestamp):
     device_mapping = device_mappings[local_address]
     device_name = device_mapping["device_name"]
     field = device_mapping["groups"][str(group)][str(index)]
-    # NEW URI STRUCTURE: Includes Group (func_code) to prevent collisions
-    # Path: .../slave/1024/timestamp/group_30/reg_0
-    reading_id = f"{timestamp}/{field}/"
-    reading_uri = URIRef(f"{RESOURCE_URL}/devices/{device_name}/{reading_id}")
-    
-    g.add((reading_uri, DNP3.device, Literal(device_name)))
+    if type(timestamp) == list:
+        upload_timestamp = timestamp[-1]
+    else:
+        upload_timestamp = timestamp
+        
+    reading_uri = URIRef(f"{RESOURCE_URL}/devices/{device_name}/group_{group}/index_{index}/{upload_timestamp}")
+
     g.add((reading_uri, DNP3.accessed, Literal(timestamp)))
-    g.add((reading_uri, DNP3.group, Literal(group)))
-    g.add((reading_uri, DNP3.dataindex, Literal(index)))
     g.add((reading_uri, DNP3.field, Literal(field)))
     g.add((reading_uri, DNP3.value, Literal(value)))
     g.add((reading_uri, DNP3.type, Literal(data_type)))
