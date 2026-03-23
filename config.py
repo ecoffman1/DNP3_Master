@@ -3,11 +3,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Modbus Configuration
-MODBUS_HOST = os.getenv("MODBUS_HOST", "localhost")
-MODBUS_PORT = int(os.getenv("MODBUS_PORT", 5020))
-REGISTER_COUNT = int(os.getenv("REGISTER_COUNT", 1))
-SLAVE_ID = int(os.getenv("SLAVE_ID", 1))
+#Remote Connection Parmaters
+REMOTE_IP = os.getenv("REMOTE_IP")
+REMOTE_PORT = int(os.getenv("REMOTE_PORT"))
+MASTER_ADDR = int(os.getenv("MASTER_ADDR"))
 
 # Solid Pod Configuration
 SOLID_SERVER = os.getenv("SOLID_SERVER")
@@ -18,5 +17,3 @@ OIDC_ISSUER = os.getenv("OIDC_ISSUER")
 # CSS Account Credentials
 CSS_EMAIL = os.getenv("CSS_EMAIL")
 CSS_PASSWORD = os.getenv("CSS_PASSWORD")
-
-

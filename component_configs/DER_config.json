@@ -1,8 +1,5 @@
 {
-  "1024": {
-    "device_name": "Wind_Power_Plant_0",
-    "ip_address": "10.1.114.34",
-    "port": 20000,
+  "Wind_Power_Plant": {
     "groups": {
       "1": {
         "0": "Enable"
@@ -15,10 +12,7 @@
       }
     }
   },
-  "1023": {
-    "device_name": "Diesel_Generator_0",
-    "ip_address": "10.1.114.34",
-    "port": 20000,
+  "Diesel_Generator": {
     "groups": {
       "1": {
         "0": "Enable"
@@ -32,27 +26,37 @@
       }
     }
   },
-  "1022": {
-    "device_name": "PV_Power_Plant_0",
-    "ip_address": "10.1.114.34",
-    "port": 20000,
-    "groups": {
-      "1": {
-        "0": "Enable"
-      },
-      "30": {
-        "0": "Voltage",
-        "1": "Frequency",
-        "2": "Active_Power",
-        "3": "Available_Power",
-        "4": "Power_Curtailment_Status"
+  "PV_Power_Plant": [
+    {
+      "groups": {
+        "1": {
+          "0": "Enable"
+        },
+        "30": {
+          "0": "Voltage",
+          "1": "Frequency",
+          "2": "Active_Power",
+          "3": "Available_Power",
+          "4": "Power_Curtailment_Status"
+        }
+      }
+    },
+    {
+      "groups": {
+        "1": {
+          "0": "Enable"
+        },
+        "30": {
+          "0": "Voltage",
+          "1": "Frequency",
+          "2": "Active_Power",
+          "3": "Available_Power",
+          "4": "Power_Curtailment_Status"
+        }
       }
     }
-  },
-  "1021": {
-    "device_name": "Battery_0",
-    "ip_address": "10.1.114.34",
-    "port": 20000,
+  ],
+  "Battery": {
     "groups": {
       "1": {
         "0": "Enable"
@@ -65,23 +69,6 @@
         "4": "SOH",
         "5": "Battery_Voltage",
         "6": "Battery_Current"
-      }
-    }
-  },
-  "1018": {
-    "device_name": "PV_Power_Plant_1",
-    "ip_address": "10.1.114.34",
-    "port": 20000,
-    "groups": {
-      "1": {
-        "0": "Enable"
-      },
-      "30": {
-        "0": "Voltage",
-        "1": "Frequency",
-        "2": "Active_Power",
-        "3": "Available_Power",
-        "4": "Power_Curtailment_Status"
       }
     }
   }

@@ -1,0 +1,14 @@
+{
+  "1021": {
+    "device_type": "Battery"
+  },
+  "1022": {
+    "device_type": "PV_Power_Plant"
+  },
+  "1023": {
+    "device_type": "Diesel_Generator"
+  },
+  "1024": {
+    "device_type": "Wind_Power_Plant"
+  }
+}

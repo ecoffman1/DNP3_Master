@@ -699,7 +699,7 @@ class DNP3_Master:
                         index_dict["values"] = []
                         index_dict["timestamps"] = []
                     if len(index_copy["values"]) == 0:
-                        print("NOT ENOUGH VALUES \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
+                        print("NOT ENOUGH VALUES \n\n")
                         continue
                     rdf_data = add_context(
                         local_address=slave_id,

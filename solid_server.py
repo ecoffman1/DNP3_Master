@@ -45,12 +45,12 @@ class SolidServer:
         self.solid_server = SOLID_SERVER
         self.resource_url = RESOURCE_URL
         self.oidc_issuer = OIDC_ISSUER
-        self.css_account = CssAccount(SOLID_SERVER,CSS_EMAIL,CSS_PASSWORD)
-        self.client_credentials = get_client_credentials(self.css_account)
-        self.token_provider = DpopTokenProvider(
-            issuer_url=self.oidc_issuer, client_id=self.client_credentials.client_id, client_secret=self.client_credentials.client_secret
-        )
-        auth = SolidClientCredentialsAuth(self.token_provider)
+        # self.css_account = CssAccount(SOLID_SERVER,CSS_EMAIL,CSS_PASSWORD)
+        # self.client_credentials = get_client_credentials(self.css_account)
+        # self.token_provider = DpopTokenProvider(
+        #     issuer_url=self.oidc_issuer, client_id=self.client_credentials.client_id, client_secret=self.client_credentials.client_secret
+        # )
+        # auth = SolidClientCredentialsAuth(self.token_provider)
 
 
 
