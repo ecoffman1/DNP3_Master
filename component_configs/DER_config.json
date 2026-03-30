@@ -2,20 +2,82 @@
   "Wind_Power_Plant": {
     "groups": {
       "1": {
-        "0": "Enable"
+        "0": "Enable_fb",
+        "1": "Turbine_Stalled",
+        "2": "Pitch_Ctrl_On",
+        "3": "Prot_Trip",
+        "4": "P_Red_On",
+        "5": "P_Cut_Out",
+        "6": "MCB_Status",
+        "7": "Lvrt_Active_Status"
+      },
+      "10": {
+        "0": "Enable",
+        "1": "Enable_Storm_Control",
+        "2": "Reset_Alarms",
+        "3": "LVRT_Enable",
+        "4": "VoltVAr_Enable",
+        "5": "HzWatt_Enable",
+        "6": "VoltWatt_Enable"
       },
       "30": {
-        "0": "Frequency",
-        "1": "Voltage",
-        "2": "Active_Power",
-        "3": "RPM"
+        "0": "Qref_fb_kVAr",
+        "1": "Pnom_kW",
+        "2": "Qnom_kVAr",
+        "3": "Snom_kVA",
+        "4": "Fmeas_Hz",
+        "5": "Vgrid_rms_meas_kV",
+        "6": "Pmeas_kW",
+        "7": "Pa_meas_kW",
+        "8": "Pb_meas_kW",
+        "9": "Pc_meas_kW",
+        "10": "Qmeas_kVAr",
+        "11": "Qa_meas_kVAr",
+        "12": "Qb_meas_kVAr",
+        "13": "Qc_meas_kVAr",
+        "14": "Smeas_kVA",
+        "15": "PFmeas",
+        "16": "Vconv_rms_meas_V",
+        "17": "Rotational_Speed_RPM",
+        "18": "Wind_Speed_m_s",
+        "19": "Avg_Wind_Speed_1",
+        "20": "Avg_Wind_Speed_2",
+        "21": "Avg_Wind_Speed_SC",
+        "22": "State",
+        "23": "Alarm_Msg",
+        "24": "Nom_Wind_Speed_m_s"
+      },
+      "40": {
+        "0": "Pcurtailment_pu",
+        "1": "Qref_pu",
+        "2": "Pcurtailment_RoC_pu_s",
+        "3": "Qref_RoC_pu_s",
+        "4": "MPPT_RoC_pu_s",
+        "5": "Int1_Wind_Speed_Max",
+        "6": "Int2_Wind_Speed_Max",
+        "7": "P_Reduction_Wind_Speed_SC",
+        "8": "Avg_Wind_Speed_Max_SC",
+        "9": "Cut_Out_Wind_Speed_SC",
+        "10": "Time_Interval_1",
+        "11": "Time_Interval_2",
+        "12": "Recovery_Time",
+        "13": "Time_Interval_SC",
+        "14": "V_Alarm_Upper_Limit",
+        "15": "V_Alarm_Lower_Limit",
+        "16": "F_Alarm_Upper_Limit",
+        "17": "F_Alarm_Lower_Limit",
+        "18": "S_Alarm_Upper_Limit",
+        "19": "I_Alarm_Upper_Limit",
+        "20": "LVRT_Q_Contribution",
+        "21": "LVRT_P_Set",
+        "22": "External_Wind_Speed"
       }
     }
   },
   "Diesel_Generator": {
     "groups": {
       "1": {
-        "0": "Enable"
+        "0": "Enable_fb"
       },
       "30": {
         "0": "Frequency",
@@ -26,40 +88,68 @@
       }
     }
   },
-  "PV_Power_Plant": [
-    {
-      "groups": {
-        "1": {
-          "0": "Enable"
-        },
-        "30": {
-          "0": "Voltage",
-          "1": "Frequency",
-          "2": "Active_Power",
-          "3": "Available_Power",
-          "4": "Power_Curtailment_Status"
-        }
-      }
-    },
-    {
-      "groups": {
-        "1": {
-          "0": "Enable"
-        },
-        "30": {
-          "0": "Voltage",
-          "1": "Frequency",
-          "2": "Active_Power",
-          "3": "Available_Power",
-          "4": "Power_Curtailment_Status"
-        }
+  "PV_Power_Plant": {
+    "groups": {
+      "1": {
+        "0": "Enable_fb",
+        "1": "Curtailment_Status",
+        "2": "MCB_Status",
+        "3": "Lvrt_Active_Status"
+      },
+      "10": {
+        "0": "Enable",
+        "1": "Reset_Alarms",
+        "2": "LVRT_Enable",
+        "3": "VoltVAr_Enable",
+        "4": "HzWatt_Enable",
+        "5": "VoltWatt_Enable"
+      },
+      "30": {
+        "0": "Pref_fb_kW",
+        "1": "Qref_fb_kVAr",
+        "2": "Pnom_kW",
+        "3": "Qnom_kVAr",
+        "4": "Snom_kVA",
+        "5": "Vgrid_rms_meas_kV",
+        "6": "Fmeas_Hz",
+        "7": "Pmeas_kW",
+        "8": "Pa_meas_kW",
+        "9": "Pb_meas_kW",
+        "10": "Pc_meas_kW",
+        "11": "Qmeas_kVAr",
+        "12": "Qa_meas_kVAr",
+        "13": "Qb_meas_kVAr",
+        "14": "Qc_meas_kVAr",
+        "15": "Smeas_kVA",
+        "16": "PFmeas",
+        "17": "Vconv_rms_meas_V",
+        "18": "Available_Ppv_kW",
+        "19": "State",
+        "20": "Alarm_Msg"
+      },
+      "40": {
+        "0": "Pcurtailment_pu",
+        "1": "Qref_pu",
+        "2": "Pcurtailment_RoC_pu_s",
+        "3": "Qref_RoC_pu_s",
+        "4": "MPPT_RoC_pu_s",
+        "5": "LVRT_Q_Contribution_pct",
+        "6": "LVRT_P_Set_pu",
+        "7": "V_Alarm_Upper_pu",
+        "8": "V_Alarm_Lower_pu",
+        "9": "F_Alarm_Upper_pu",
+        "10": "F_Alarm_Lower_pu",
+        "11": "S_Alarm_Upper_pu",
+        "12": "I_Alarm_Upper_pu",
+        "13": "Temperature_degC",
+        "14": "Irradiance_W_m2"
       }
     }
-  ],
+  },
   "Battery": {
     "groups": {
       "1": {
-        "0": "Enable"
+        "0": "Enable_fb"
       },
       "30": {
         "0": "Voltage",

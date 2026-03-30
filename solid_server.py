@@ -98,7 +98,8 @@ class SolidServer:
                 target_url,
                 headers=headers,
                 data=sparql_query,
-                verify=False  # Useful for local/testing Pods; remove for production
+                verify=False,  # Useful for local/testing Pods; remove for production
+                timeout=8,     # Never block indefinitely — fail fast and move on
             )
 
             if response.status_code not in [200, 201, 204, 205]:
@@ -188,4 +189,3 @@ class SolidServer:
             
             if all(v is not None for v in [reg, val, time, group]):
                 print(f"[{time}] Group {group} | Reg {reg} | Val: {val}")
-    

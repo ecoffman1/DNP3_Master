@@ -32,6 +32,9 @@ Usage
 -----
   python dnp3_client.py 192.168.1.100 20000 --slaves 10 20
   python dnp3_client.py 192.168.1.100 20000 --master 1 --slaves 10 --debug
+  python dnp3_client.py 192.168.1.100 20000 --master 1 --slaves 10 --integrity 60 --class1 10 --class2 30
+  # Disable all automatic polling (manual control only):
+  python dnp3_client.py 192.168.1.100 20000 --master 1 --slaves 10 --integrity 0
 """
 
 import socket
@@ -39,13 +42,12 @@ import struct
 import threading
 import time
 import logging
-import random
 from collections import namedtuple
 from enum import IntEnum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 # ---------------------------------------------------------------------------
-# Logging — always force our handler so basicConfig() conflicts don't silence us
+# Logging
 # ---------------------------------------------------------------------------
 log = logging.getLogger("dnp3")
 log.setLevel(logging.INFO)
@@ -55,7 +57,7 @@ if not log.handlers:
     _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)-8s] %(message)s"))
     log.addHandler(_handler)
 
-log.propagate = False   # don't double-print if root logger is also configured
+log.propagate = False
 
 
 # ===========================================================================
@@ -105,6 +107,8 @@ class FunctionCode(IntEnum):
     READ            = 0x01
     WRITE           = 0x02
     DIRECT_OPERATE  = 0x03
+    OPERATE         = 0x04
+    SELECT          = 0x05
     FREEZE          = 0x07
     COLD_RESTART    = 0x0D
     WARM_RESTART    = 0x0E
@@ -122,8 +126,15 @@ DNP3Point = namedtuple(
 )
 
 
+def _format_timestamp(ts) -> str:
+    from datetime import datetime
+    if ts is None:
+        return "N/A"
+    ts = ts / 1000.0 if ts > 1e11 else ts
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%dT%H-%M-%S-%f")[:-3]
+
+
 def _fmt_point(p: DNP3Point) -> str:
-    """Compact human-readable string for one decoded point."""
     val = p.value.hex() if isinstance(p.value, (bytes, bytearray)) else str(p.value)
     parts = [f"slave={p.slave_addr}", f"G{p.group}V{p.variation}", f"idx={p.index}", f"value={val}"]
     if p.flags is not None:
@@ -145,10 +156,6 @@ def _decode_dnp3_time(raw6: bytes) -> int:
 
 
 def _decode_objects(group: int, variation: int, indices: List[int], data: bytes) -> List[dict]:
-    """
-    Decode raw object data bytes for a given group/variation.
-    Returns list of {index, value, flags, timestamp_ms}.
-    """
     results: List[dict] = []
     pos = 0
 
@@ -157,13 +164,13 @@ def _decode_objects(group: int, variation: int, indices: List[int], data: bytes)
 
     # --- Group 1: Binary Input ---
     if group == 1:
-        if variation == 1:  # packed bits, no flags
+        if variation == 1:
             for i, idx in enumerate(indices):
                 byte_off = i // 8
                 bit_off  = i % 8
                 if byte_off < len(data):
                     emit(idx, bool((data[byte_off] >> bit_off) & 1))
-        elif variation == 2:  # 1 byte: flags[6:0], value[7]
+        elif variation == 2:
             for idx in indices:
                 if pos < len(data):
                     b = data[pos]; pos += 1
@@ -332,8 +339,8 @@ def _decode_objects(group: int, variation: int, indices: List[int], data: bytes)
 def _object_size(group: int, variation: int) -> Optional[int]:
     """Fixed byte-size per object instance, or None if variable/unknown."""
     TABLE = {
-        (1,1):-1,  # packed bits: ceil(n/8) bytes total
-        (3,1):-1,  # packed bits: ceil(n/8) bytes total
+        (1,1):-1,
+        (3,1):-1,
         (1,2):1,
         (2,1):1,(2,2):7,(2,3):3,
         (3,2):1,
@@ -382,7 +389,11 @@ def decode_objects(slave_addr: int, app_data: bytes) -> List[DNP3Point]:
         variation = app_data[pos];   pos += 1
         qualifier = app_data[pos];   pos += 1
 
-        # ---- resolve index list and advance pos past qualifier header ----
+        # Skip invalid group numbers — DNP3 only defines groups up to 110
+        if group > 110:
+            log.debug("Ignoring invalid group %d — likely framing artifact", group)
+            break
+
         indices: Optional[List[int]] = None
 
         if qualifier == 0x06:
@@ -438,7 +449,6 @@ def decode_objects(slave_addr: int, app_data: bytes) -> List[DNP3Point]:
         # ---- decode objects for range/count qualifiers ----
         obj_sz = _object_size(group, variation)
         if obj_sz == -1:
-            # Packed bits: the whole range is stored in ceil(count/8) bytes
             import math
             packed_bytes = math.ceil(len(indices) / 8)
             raw = app_data[pos : pos + packed_bytes]
@@ -449,7 +459,6 @@ def decode_objects(slave_addr: int, app_data: bytes) -> List[DNP3Point]:
             _append(group, variation, _decode_objects(group, variation, indices, raw))
             pos += obj_sz * len(indices)
         else:
-            # Unknown size — best effort, stops further parsing of this frame
             raw = app_data[pos:]
             _append(group, variation, _decode_objects(group, variation, indices, raw))
             break
@@ -474,7 +483,7 @@ def build_frame(
         chunk = user_data[i:i+16]
         blocks += chunk + crc_bytes(chunk)
 
-    header_raw = DNP3_START + struct.pack("<BBHH", len(user_data)+5, 0xC4, dest, src)  # 0xC4 = DIR bit set (required by Typhoon HIL)
+    header_raw = DNP3_START + struct.pack("<BBHH", len(user_data)+5, 0xC4, dest, src)
     return header_raw + crc_bytes(header_raw) + blocks
 
 
@@ -505,16 +514,26 @@ def parse_frame(raw: bytes) -> Optional[dict]:
 
     if bad_crc:
         return {**base, "valid_crc": False, "transport": None,
-                "app_ctrl": None, "function_code": None, "app_data": b""}
+                "app_ctrl": None, "function_code": None,
+                "fir": 1, "fin": 1, "trans_seq": 0, "app_data": b""}
 
     if len(user_data) < 2:
         return None
 
+    transport = user_data[0]
+    # Transport byte: bit7=FIR (first fragment), bit6=FIN (final fragment), bits5-0=sequence
+    fir       = (transport >> 7) & 1
+    fin       = (transport >> 6) & 1
+    trans_seq = transport & 0x3F
+
     return {
         **base,
         "valid_crc":     True,
-        "transport":     user_data[0],
-        "app_ctrl":      user_data[1],
+        "transport":     transport,
+        "fir":           fir,
+        "fin":           fin,
+        "trans_seq":     trans_seq,
+        "app_ctrl":      user_data[1] if len(user_data) > 1 else None,
         "function_code": user_data[2] if len(user_data) > 2 else None,
         "app_data":      user_data[3:] if len(user_data) > 3 else b"",
     }
@@ -526,7 +545,8 @@ def parse_frame(raw: bytes) -> Optional[dict]:
 
 class SlaveSession:
     """
-    Per-outstation session with independent sequence counters.
+    Per-outstation session with independent sequence counters and
+    multi-fragment response reassembly.
 
     Callbacks (all optional — set after construction):
       on_points(List[DNP3Point])             decoded points from a RESPONSE
@@ -542,6 +562,11 @@ class SlaveSession:
         self._app_seq   = 0
         self._trans_seq = 0
         self._lock      = threading.Lock()
+
+        # Multi-fragment reassembly buffer
+        self._frag_buf:      bytes         = b""
+        self._frag_fc:       Optional[int] = None
+        self._frag_app_ctrl: Optional[int] = None
 
         self.on_points:             Optional[Callable[[List[DNP3Point]], None]] = None
         self.on_unsolicited_points: Optional[Callable[[List[DNP3Point]], None]] = None
@@ -565,19 +590,55 @@ class SlaveSession:
         ))
 
     # --- requests ---
-    def send_integrity_poll(self)                              : self._send(FunctionCode.READ, bytes([60,1,0x06]))
-    def send_read_request(self, group: int, variation: int)   : self._send(FunctionCode.READ, bytes([group,variation,0x06]))
-    def send_cold_restart(self)                                : self._send(FunctionCode.COLD_RESTART)
-    def send_warm_restart(self)                                : self._send(FunctionCode.WARM_RESTART)
-    def send_freeze(self)                                      : self._send(FunctionCode.FREEZE, bytes([20,0,0x06]))
+    def send_class0_poll(self) -> None:
+        log.info("[slave %d] Class 0 poll", self.slave_addr)
+        self._send(FunctionCode.READ, bytes([60, 1, 0x06]))
+
+    def send_class1_poll(self) -> None:
+        log.info("[slave %d] Class 1 poll", self.slave_addr)
+        self._send(FunctionCode.READ, bytes([60, 2, 0x06]))
+
+    def send_class2_poll(self) -> None:
+        log.info("[slave %d] Class 2 poll", self.slave_addr)
+        self._send(FunctionCode.READ, bytes([60, 3, 0x06]))
+
+    def send_class3_poll(self) -> None:
+        log.info("[slave %d] Class 3 poll", self.slave_addr)
+        self._send(FunctionCode.READ, bytes([60, 4, 0x06]))
+
+    def send_integrity_poll(self) -> None:
+        log.info("[slave %d] Integrity poll (Class 0+1+2+3)", self.slave_addr)
+        self._send(FunctionCode.READ,
+                   bytes([60,1,0x06, 60,2,0x06, 60,3,0x06, 60,4,0x06]))
+
+    def send_read_request(self, group: int, variation: int): self._send(FunctionCode.READ, bytes([group, variation, 0x06]))
+    def send_cold_restart(self):                              self._send(FunctionCode.COLD_RESTART)
+    def send_warm_restart(self):                              self._send(FunctionCode.WARM_RESTART)
+    def send_freeze(self):                                    self._send(FunctionCode.FREEZE, bytes([20, 0, 0x06]))
 
     def send_direct_operate(self, group, variation, index, data):
-        self._send(FunctionCode.DIRECT_OPERATE,
-                   bytes([group, variation, 0x28, 1]) + struct.pack("<H", index) + data)
+        header = bytes([group, variation, 0x28]) + struct.pack("<HH", 1, index)
+        self._send(FunctionCode.DIRECT_OPERATE, header + data)
 
     def send_write(self, group, variation, index, data):
         self._send(FunctionCode.WRITE,
                    bytes([group, variation, 0x28, 1]) + struct.pack("<H", index) + data)
+
+    def send_crob(self, index: int, latch_on: bool,
+                  count: int = 1, on_ms: int = 100, off_ms: int = 100) -> None:
+        """
+        Send a CROB SELECT (G12V1) to control a binary output.
+        Uses control code 0x83 (LATCH_ON + CLOSE bit) as required by Typhoon HIL.
+
+        latch_on=True  → LATCH_ON  (turns device ON)
+        latch_on=False → LATCH_OFF (turns device OFF)
+        """
+        control_code = 0x83 if latch_on else 0x84  # LATCH_ON+CLOSE / LATCH_OFF+CLOSE
+        crob   = struct.pack('<BBII B', control_code, count, on_ms, off_ms, 0x00)
+        header = bytes([12, 1, 0x28]) + struct.pack("<HH", 1, index)
+        log.info("[slave %d] CROB G12V1 idx=%d %s",
+                 self.slave_addr, index, "LATCH_ON" if latch_on else "LATCH_OFF")
+        self._send(FunctionCode.SELECT, header + crob)
 
     def send_confirm(self, seq: int) -> None:
         self._master._send_raw(build_frame(
@@ -594,53 +655,91 @@ class SlaveSession:
             if self.on_error: self.on_error(self.slave_addr, reason)
             return
 
-        fc             = frame.get("function_code")
-        app_data       = frame.get("app_data", b"")
+        fc        = frame.get("function_code")
+        app_data  = frame.get("app_data", b"")
+        app_ctrl  = frame.get("app_ctrl")
+        fir       = frame.get("fir", 1)
+        fin       = frame.get("fin", 1)
+
         is_response    = (fc == FunctionCode.RESPONSE)
         is_unsolicited = (fc == FunctionCode.UNSOLICITED_RSP)
 
-        # Always attempt to decode objects.
-        # RESPONSE and UNSOLICITED_RSP frames prepend 2 IIN bytes before
-        # the object headers — strip them before decoding.
-        points: List[DNP3Point] = []
-        obj_payload = app_data[2:] if (is_response or is_unsolicited) and len(app_data) >= 2 else app_data
-        if obj_payload:
-            try:
-                points = decode_objects(self.slave_addr, obj_payload)
-            except Exception as exc:
-                log.warning("[slave %d] Object decode error: %s", self.slave_addr, exc)
-
-        if is_response or is_unsolicited:
-            # Auto-confirm when outstation sets the CON bit
-            ac = frame.get("app_ctrl")
-            if ac is not None and (ac >> 5) & 1:
-                self.send_confirm(ac & 0x0F)
-
-            label = "RESPONSE" if is_response else "UNSOLICITED"
-
-            # --- Always print something so the user knows a frame arrived ---
-            print(f"\n{'═'*62}")
-            print(f"  {label} from slave {self.slave_addr}")
-            print(f"{'─'*62}")
-            if points:
-                for p in points:
-                    print(f"  {_fmt_point(p)}")
-            else:
-                raw_hex = app_data.hex() if app_data else "(empty)"
-                print(f"  No decodable object data.  raw app_data={raw_hex}")
-            print(f"{'═'*62}\n")
-
-            if is_response:
-                if self.on_points:    self.on_points(points)
-                if self.on_response:  self.on_response(frame)
-            else:
-                if self.on_unsolicited_points: self.on_unsolicited_points(points)
-                if self.on_unsolicited:        self.on_unsolicited(frame)
-
-        else:
+        # Non-data frames (CONFIRM, SELECT response, etc.) — nothing to decode
+        if not is_response and not is_unsolicited:
             fc_name = (FunctionCode(fc).name
                        if fc in FunctionCode._value2member_map_ else f"0x{fc:02X}")
             log.info("[slave %d] Received FC=%s", self.slave_addr, fc_name)
+            return
+
+        # ------------------------------------------------------------------
+        # Multi-fragment reassembly
+        # ------------------------------------------------------------------
+        if fir:
+            # First fragment — start fresh, store FC and app_ctrl from first frag
+            self._frag_buf      = app_data
+            self._frag_fc       = fc
+            self._frag_app_ctrl = app_ctrl
+        else:
+            # Continuation fragment — append payload
+            self._frag_buf += app_data
+
+        if not fin:
+            # More fragments coming — send confirm if CON bit set, then wait
+            if app_ctrl is not None and (app_ctrl >> 5) & 1:
+                self.send_confirm(app_ctrl & 0x0F)
+            log.debug("[slave %d] Fragment received (FIR=%d FIN=%d), waiting for more",
+                      self.slave_addr, fir, fin)
+            return
+
+        # FIN=1 — complete message assembled
+        app_data = self._frag_buf
+        fc       = self._frag_fc
+        app_ctrl = self._frag_app_ctrl
+        self._frag_buf = b""
+
+        # ------------------------------------------------------------------
+        # Auto-confirm when outstation sets the CON bit
+        # ------------------------------------------------------------------
+        if app_ctrl is not None and (app_ctrl >> 5) & 1:
+            self.send_confirm(app_ctrl & 0x0F)
+
+        # ------------------------------------------------------------------
+        # Decode objects
+        # RESPONSE and UNSOLICITED_RSP prepend 2 IIN bytes before object headers
+        # ------------------------------------------------------------------
+        points: List[DNP3Point] = []
+        obj_payload = app_data[2:] if len(app_data) >= 2 else b""
+        if obj_payload:
+            try:
+                recv_time = _format_timestamp(time.time())
+                points = decode_objects(self.slave_addr, obj_payload)
+                points = [
+                    p if p.timestamp_ms is not None
+                    else p._replace(timestamp_ms=recv_time)
+                    for p in points
+                ]
+            except Exception as exc:
+                log.warning("[slave %d] Object decode error: %s", self.slave_addr, exc)
+
+        label = "RESPONSE" if fc == FunctionCode.RESPONSE else "UNSOLICITED"
+
+        print(f"\n{'═'*62}")
+        print(f"  {label} from slave {self.slave_addr}")
+        print(f"{'─'*62}")
+        if points:
+            for p in points:
+                print(f"  {_fmt_point(p)}")
+        else:
+            raw_hex = app_data.hex() if app_data else "(empty)"
+            print(f"  No decodable object data.  raw app_data={raw_hex}")
+        print(f"{'═'*62}\n")
+
+        if fc == FunctionCode.RESPONSE:
+            if self.on_points:    self.on_points(points)
+            if self.on_response:  self.on_response(frame)
+        else:
+            if self.on_unsolicited_points: self.on_unsolicited_points(points)
+            if self.on_unsolicited:        self.on_unsolicited(frame)
 
 
 # ===========================================================================
@@ -656,37 +755,46 @@ class DNP3Master:
     - TCP SO_KEEPALIVE so the OS detects a silently dead connection
     - Auto-reconnect: if the socket drops, a background thread reconnects
       and re-sends integrity polls to all registered slaves
-    - Periodic integrity poll (keepalive_interval seconds, default 30s) so
+    - Periodic integrity poll (keepalive_interval seconds, default 60s) so
       the device never times the session out due to inactivity
     - Incoming frames routed by DNP3 SRC address to the correct SlaveSession
+    - Multi-fragment response reassembly per SlaveSession
     """
 
     def __init__(self, host: str, port: int = 20000,
                  master_addr: int = 1, timeout: float = 5.0,
                  reconnect_delay: float = 5.0,
-                 keepalive_interval: float = 60.0):
+                 class0_interval: float = 0.0,
+                 class1_interval: float = 0.0,
+                 class2_interval: float = 0.0,
+                 class3_interval: float = 0.0,
+                 integrity_interval: float = 60.0):
         self.host               = host
         self.port               = port
         self.master_addr        = master_addr
         self.timeout            = timeout
-        self.reconnect_delay    = reconnect_delay    # seconds between reconnect attempts
-        self.keepalive_interval = keepalive_interval # seconds between integrity polls
+        self.reconnect_delay    = reconnect_delay
+        self.class0_interval    = class0_interval
+        self.class1_interval    = class1_interval
+        self.class2_interval    = class2_interval
+        self.class3_interval    = class3_interval
+        self.integrity_interval = integrity_interval
         self._sock: Optional[socket.socket] = None
         self._running    = False
         self._send_lock  = threading.Lock()
         self._recv_buf   = b""
         self._recv_thread:      Optional[threading.Thread] = None
-        self._keepalive_thread: Optional[threading.Thread] = None
+        self._poll_thread:      Optional[threading.Thread] = None
         self._slaves: Dict[int, SlaveSession] = {}
         self._slaves_lock = threading.Lock()
         self.on_unknown_slave:  Optional[Callable[[dict], None]] = None
-        self.on_reconnect:      Optional[Callable[[], None]] = None  # fired after each reconnect
+        self.on_reconnect:      Optional[Callable[[], None]] = None
 
     # ------------------------------------------------------------------
     # Slave registry
     # ------------------------------------------------------------------
 
-    def add_slave(self, addr: int) -> SlaveSession:
+    def add_slave(self, addr: int) -> "SlaveSession":
         with self._slaves_lock:
             if addr not in self._slaves:
                 self._slaves[addr] = SlaveSession(self, addr)
@@ -696,10 +804,10 @@ class DNP3Master:
     def remove_slave(self, addr: int) -> None:
         with self._slaves_lock: self._slaves.pop(addr, None)
 
-    def get_slave(self, addr: int) -> Optional[SlaveSession]:
+    def get_slave(self, addr: int) -> Optional["SlaveSession"]:
         with self._slaves_lock: return self._slaves.get(addr)
 
-    def slaves(self) -> Dict[int, SlaveSession]:
+    def slaves(self) -> Dict[int, "SlaveSession"]:
         with self._slaves_lock: return dict(self._slaves)
 
     # ------------------------------------------------------------------
@@ -707,20 +815,17 @@ class DNP3Master:
     # ------------------------------------------------------------------
 
     def connect(self) -> None:
-        """Open the TCP socket and start background threads."""
         self._running = True
         self._open_socket()
         self._recv_thread = threading.Thread(
             target=self._recv_loop, daemon=True, name="dnp3-recv")
-        self._keepalive_thread = threading.Thread(
-            target=self._keepalive_loop, daemon=True, name="dnp3-keepalive")
+        self._poll_thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="dnp3-poll")
         self._recv_thread.start()
-        self._keepalive_thread.start()
-        # Give the recv thread a moment to start before the startup sequence
+        self._poll_thread.start()
         time.sleep(0.1)
 
     def disconnect(self) -> None:
-        """Shut down all threads and close the socket."""
         self._running = False
         self._close_socket()
         log.info("Disconnected.")
@@ -733,21 +838,17 @@ class DNP3Master:
     # ------------------------------------------------------------------
 
     def _open_socket(self) -> bool:
-        """Create and connect the TCP socket. Returns True on success."""
         try:
             log.info("Connecting to %s:%d …", self.host, self.port)
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-            # TCP keepalive — OS will probe and detect a dead link
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            if hasattr(socket, "TCP_KEEPIDLE"):   # Linux
+            if hasattr(socket, "TCP_KEEPIDLE"):
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE,  10)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 5)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT,   3)
-
             sock.settimeout(self.timeout)
             sock.connect((self.host, self.port))
-            self._recv_buf = b""        # discard stale bytes from old session
+            self._recv_buf = b""
             self._sock = sock
             log.info("Connected to %s:%d", self.host, self.port)
             return True
@@ -786,6 +887,18 @@ class DNP3Master:
     # Broadcast helpers
     # ------------------------------------------------------------------
 
+    def broadcast_class0_poll(self):
+        for s in self.slaves().values(): s.send_class0_poll()
+
+    def broadcast_class1_poll(self):
+        for s in self.slaves().values(): s.send_class1_poll()
+
+    def broadcast_class2_poll(self):
+        for s in self.slaves().values(): s.send_class2_poll()
+
+    def broadcast_class3_poll(self):
+        for s in self.slaves().values(): s.send_class3_poll()
+
     def broadcast_integrity_poll(self):
         for s in self.slaves().values(): s.send_integrity_poll()
 
@@ -793,48 +906,30 @@ class DNP3Master:
         for s in self.slaves().values(): s.send_cold_restart()
 
     # ------------------------------------------------------------------
-    # Startup sequence — clear restart bit then poll
+    # Startup sequence
     # ------------------------------------------------------------------
 
     def _startup_sequence(self) -> None:
         """
-        Perform the DNP3 startup handshake after connect/reconnect.
-
-        Many outstations (including Typhoon HIL) set the Device Restart IIN
-        bit on startup and send an UNSOLICITED_RSP to announce it. They will
-        NOT respond to any READ until the master:
-          1. Sends WRITE G80V1 to clear the restart bit, OR
-          2. Confirms the unsolicited response that carries the restart bit.
-
-        We do both to be safe:
-          - Wait briefly for any immediate unsolicited startup frame (the
-            recv loop will auto-confirm it via _dispatch).
-          - Explicitly WRITE G80V1 idx=7 value=0 to clear Device Restart.
-          - Then send integrity polls.
+        DNP3 startup handshake:
+          1. Wait briefly for any immediate unsolicited startup frame
+          2. WRITE G80V1 to clear Device Restart bit on every slave
+          3. Send integrity polls
         """
         log.info("Running startup sequence …")
-
-        # Step 1 — pause briefly so any immediate unsolicited startup frame
-        # arrives and gets confirmed by the recv loop before we write
         time.sleep(0.5)
 
-        # Step 2 — explicitly clear the Device Restart bit (G80V1, index 7)
-        # on every registered slave.  This unblocks outstations that require
-        # the master to write the restart bit clear before answering polls.
         for s in self.slaves().values():
             try:
                 log.info("[slave %d] Writing G80V1 to clear Device Restart bit", s.slave_addr)
-                # qualifier 0x00, start=7, stop=7, value=0x00
                 app_data = bytes([80, 1, 0x00, 7, 7, 0x00])
                 s._send(FunctionCode.WRITE, app_data)
                 time.sleep(0.1)
             except Exception as exc:
                 log.warning("[slave %d] Write G80V1 failed: %s", s.slave_addr, exc)
 
-        # Step 3 — wait a moment for the outstation to process the write
         time.sleep(0.3)
 
-        # Step 4 — send integrity polls
         log.info("Startup: sending integrity polls …")
         for s in self.slaves().values():
             try:
@@ -844,13 +939,12 @@ class DNP3Master:
                 log.warning("[slave %d] Integrity poll failed: %s", s.slave_addr, exc)
 
     # ------------------------------------------------------------------
-    # Receive loop — reconnects automatically on drop
+    # Receive loop
     # ------------------------------------------------------------------
 
     def _recv_loop(self) -> None:
         while self._running:
             if self._sock is None:
-                # Socket lost — wait then reconnect
                 log.warning("Connection lost. Reconnecting in %.0fs …", self.reconnect_delay)
                 time.sleep(self.reconnect_delay)
                 if not self._running:
@@ -868,7 +962,7 @@ class DNP3Master:
                     log.warning("Remote host closed the connection.")
                     self._close_socket()
                     continue
-                log.info("RX %d bytes: %s", len(chunk), chunk.hex())
+                log.debug("RX %d bytes: %s", len(chunk), chunk.hex())
                 self._recv_buf += chunk
                 self._drain_buffer()
             except socket.timeout:
@@ -879,21 +973,52 @@ class DNP3Master:
                 self._close_socket()
 
     # ------------------------------------------------------------------
-    # Keepalive loop — periodic integrity poll to prevent session timeout
+    # Poll loop
     # ------------------------------------------------------------------
 
-    def _keepalive_loop(self) -> None:
-        """Send an integrity poll on every slave every keepalive_interval seconds."""
+    def _poll_loop(self) -> None:
+        last: Dict[str, float] = {
+            "class0": 0.0, "class1": 0.0, "class2": 0.0,
+            "class3": 0.0, "integrity": 0.0,
+        }
+        intervals = {
+            "class0":    self.class0_interval,
+            "class1":    self.class1_interval,
+            "class2":    self.class2_interval,
+            "class3":    self.class3_interval,
+            "integrity": self.integrity_interval,
+        }
+        poll_fns = {
+            "class0":    lambda s: s.send_class0_poll(),
+            "class1":    lambda s: s.send_class1_poll(),
+            "class2":    lambda s: s.send_class2_poll(),
+            "class3":    lambda s: s.send_class3_poll(),
+            "integrity": lambda s: s.send_integrity_poll(),
+        }
+        poll_names = {
+            "class0": "Class 0", "class1": "Class 1",
+            "class2": "Class 2", "class3": "Class 3",
+            "integrity": "Integrity (Class 0+1+2+3)",
+        }
+
         while self._running:
-            time.sleep(self.keepalive_interval)
-            if not self._running:
-                break
-            if self._sock is None:
-                continue   # reconnect in progress — recv_loop handles it
-            log.info("Keepalive: sending integrity polls to all slaves")
-            for s in self.slaves().values():
-                try: s.send_integrity_poll()
-                except Exception: pass
+            time.sleep(1.0)
+            if not self._running: break
+            if self._sock is None: continue
+
+            now = time.monotonic()
+            for key, interval in intervals.items():
+                if interval <= 0: continue
+                if now - last[key] >= interval:
+                    last[key] = now
+                    log.info("Poll: %s (every %.0fs)", poll_names[key], interval)
+                    for s in self.slaves().values():
+                        try:
+                            poll_fns[key](s)
+                            time.sleep(0.05)
+                        except Exception as exc:
+                            log.warning("Poll %s failed for slave %d: %s",
+                                        key, s.slave_addr, exc)
 
     # ------------------------------------------------------------------
     # Frame assembly and routing
@@ -903,11 +1028,7 @@ class DNP3Master:
         while True:
             idx = self._recv_buf.find(DNP3_START)
             if idx == -1:
-                if self._recv_buf:
-                    log.warning("No DNP3 start bytes in buffer (%d bytes): %s",
-                                len(self._recv_buf), self._recv_buf.hex())
                 self._recv_buf = b""; return
-
             if idx > 0:
                 log.warning("Discarding %d non-DNP3 bytes: %s",
                             idx, self._recv_buf[:idx].hex())
@@ -915,19 +1036,34 @@ class DNP3Master:
 
             if len(self._recv_buf) < 10: return
 
-            user_data_len = self._recv_buf[2] - 5
+            length_byte   = self._recv_buf[2]
+            user_data_len = length_byte - 5
+
             if user_data_len < 0:
-                log.warning("Bad LEN byte 0x%02X — skipping", self._recv_buf[2])
+                log.warning("Bad LEN byte 0x%02X — skipping", length_byte)
                 self._recv_buf = self._recv_buf[2:]; continue
 
-            frame_size = 10 + user_data_len + ((user_data_len + 15) // 16) * 2
+            # Calculate exact frame size:
+            # Each full 16-byte data block gets +2 CRC bytes = 18 bytes
+            # Any remaining partial block also gets +2 CRC bytes
+            num_full_blocks = user_data_len // 16
+            remaining       = user_data_len % 16
+            block_bytes     = num_full_blocks * 18
+            if remaining > 0:
+                block_bytes += remaining + 2
+            frame_size = 10 + block_bytes  # 10 = 8-byte header + 2-byte header CRC
+
             if len(self._recv_buf) < frame_size:
-                return   # wait for the rest of the frame
+                return  # wait for more data
 
             raw_frame      = self._recv_buf[:frame_size]
             self._recv_buf = self._recv_buf[frame_size:]
             parsed = parse_frame(raw_frame)
             if parsed:
+                log.debug("Frame OK: fc=0x%02X fir=%d fin=%d app_data_len=%d",
+                          parsed.get("function_code") or 0xFF,
+                          parsed.get("fir", 1), parsed.get("fin", 1),
+                          len(parsed.get("app_data", b"")))
                 self._route(parsed)
             else:
                 log.warning("Frame failed CRC check (%d bytes): %s",
@@ -945,7 +1081,6 @@ class DNP3Master:
                 "auto-registering and confirming",
                 src, registered, fc if fc is not None else 0xFF,
             )
-            # Auto-register so we decode + print its data going forward
             session = self.add_slave(src)
             if self.on_unknown_slave:
                 self.on_unknown_slave(frame)
@@ -974,8 +1109,16 @@ if __name__ == "__main__":
                         help="Socket connect/read timeout (seconds)")
     parser.add_argument("--reconnect-delay", type=float, default=5.0, metavar="SECS",
                         help="Seconds to wait before reconnecting after a drop")
-    parser.add_argument("--keepalive", type=float, default=30.0, metavar="SECS",
-                        help="Integrity poll interval to keep the session alive (seconds)")
+    parser.add_argument("--class0",     type=float, default=0.0,  metavar="SECS",
+                        help="Class 0 poll interval in seconds (0 = disabled)")
+    parser.add_argument("--class1",     type=float, default=0.0,  metavar="SECS",
+                        help="Class 1 poll interval in seconds (0 = disabled)")
+    parser.add_argument("--class2",     type=float, default=0.0,  metavar="SECS",
+                        help="Class 2 poll interval in seconds (0 = disabled)")
+    parser.add_argument("--class3",     type=float, default=0.0,  metavar="SECS",
+                        help="Class 3 poll interval in seconds (0 = disabled)")
+    parser.add_argument("--integrity",  type=float, default=60.0, metavar="SECS",
+                        help="Integrity poll interval in seconds (0 = disabled)")
     parser.add_argument("--debug",   action="store_true",
                         help="Enable DEBUG-level logging (show raw bytes)")
     args = parser.parse_args()
@@ -988,7 +1131,11 @@ if __name__ == "__main__":
         master_addr        = args.master,
         timeout            = args.timeout,
         reconnect_delay    = args.reconnect_delay,
-        keepalive_interval = args.keepalive,
+        class0_interval    = args.class0,
+        class1_interval    = args.class1,
+        class2_interval    = args.class2,
+        class3_interval    = args.class3,
+        integrity_interval = args.integrity,
     )
 
     for addr in args.slaves:
@@ -996,14 +1143,17 @@ if __name__ == "__main__":
 
     try:
         master.connect()
-
         master._startup_sequence()
 
-        log.info(
-            "Running. Keepalive every %.0fs. Auto-reconnect after %.0fs. "
-            "Press Ctrl+C to exit.",
-            args.keepalive, args.reconnect_delay,
-        )
+        enabled_polls = []
+        if args.class0    > 0: enabled_polls.append(f"Class0={args.class0:.0f}s")
+        if args.class1    > 0: enabled_polls.append(f"Class1={args.class1:.0f}s")
+        if args.class2    > 0: enabled_polls.append(f"Class2={args.class2:.0f}s")
+        if args.class3    > 0: enabled_polls.append(f"Class3={args.class3:.0f}s")
+        if args.integrity > 0: enabled_polls.append(f"Integrity={args.integrity:.0f}s")
+        poll_str = ", ".join(enabled_polls) if enabled_polls else "none (all disabled)"
+        log.info("Running. Polls: %s. Auto-reconnect after %.0fs. Press Ctrl+C to exit.",
+                 poll_str, args.reconnect_delay)
         while True:
             time.sleep(1)
 
