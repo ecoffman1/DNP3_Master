@@ -50,7 +50,7 @@ from typing import Callable, Dict, List, Optional
 # Logging
 # ---------------------------------------------------------------------------
 log = logging.getLogger("dnp3")
-log.setLevel(logging.INFO)
+log.setLevel(logging.CRITICAL)
 
 if not log.handlers:
     _handler = logging.StreamHandler()
@@ -721,18 +721,18 @@ class SlaveSession:
             except Exception as exc:
                 log.warning("[slave %d] Object decode error: %s", self.slave_addr, exc)
 
-        label = "RESPONSE" if fc == FunctionCode.RESPONSE else "UNSOLICITED"
+        # label = "RESPONSE" if fc == FunctionCode.RESPONSE else "UNSOLICITED"
 
-        print(f"\n{'═'*62}")
-        print(f"  {label} from slave {self.slave_addr}")
-        print(f"{'─'*62}")
-        if points:
-            for p in points:
-                print(f"  {_fmt_point(p)}")
-        else:
-            raw_hex = app_data.hex() if app_data else "(empty)"
-            print(f"  No decodable object data.  raw app_data={raw_hex}")
-        print(f"{'═'*62}\n")
+        # print(f"\n{'═'*62}")
+        # print(f"  {label} from slave {self.slave_addr}")
+        # print(f"{'─'*62}")
+        # if points:
+        #     for p in points:
+        #         print(f"  {_fmt_point(p)}")
+        # else:
+        #     raw_hex = app_data.hex() if app_data else "(empty)"
+        #     print(f"  No decodable object data.  raw app_data={raw_hex}")
+        # print(f"{'═'*62}\n")
 
         if fc == FunctionCode.RESPONSE:
             if self.on_points:    self.on_points(points)

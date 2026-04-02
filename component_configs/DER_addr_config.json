@@ -3,12 +3,13 @@
   "1001": {"device_type": "PV_Power_Plant"},
   "1002": {"device_type": "PV_Power_Plant"},
   "1003": {"device_type": "PV_Power_Plant"},
-  "1004": {"device_type": "PV_Power_Plant"},
-  "1005": {"device_type": "PV_Power_Plant"},
-  "1006": {"device_type": "PV_Power_Plant"},
-  "1007": {"device_type": "PV_Power_Plant"},
-  "1008": {"device_type": "PV_Power_Plant"},
-  "1009": {"device_type": "PV_Power_Plant"},
-  "1010": {"device_type": "PV_Power_Plant"},
-  "1030": {"device_type": "Wind_Power_Plant"}
+  "1004": {"device_type": "Battery"},
+  "1005": {"device_type": "Battery"},
+  "1006": {"device_type": "Battery"},
+  "1007": {"device_type": "Battery"},
+  "1008": {"device_type": "Wind_Power_Plant"},
+  "1009": {"device_type": "Wind_Power_Plant"},
+  "1010": {"device_type": "Wind_Power_Plant"},
+  "1011": {"device_type": "Wind_Power_Plant"},
+  "1012": {"device_type": "Diesel_Generator"}
 }

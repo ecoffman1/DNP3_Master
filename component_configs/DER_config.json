@@ -77,14 +77,52 @@
   "Diesel_Generator": {
     "groups": {
       "1": {
-        "0": "Enable_fb"
+        "0": "Enable_fb",
+        "1": "MCB_status"
+      },
+      "10": {
+        "0": "Enable",
+        "1": "Reset_Alarms"
       },
       "30": {
-        "0": "Frequency",
-        "1": "Voltage",
-        "2": "Active_Power",
-        "3": "Generator_Line_Voltage",
-        "4": "Generator_Speed"
+        "0":  "Pref_fb_kW",
+        "1":  "Qref_fb_kVAr",
+        "2":  "Vrms_ref_fb_V",
+        "3":  "Fref_fb_Hz",
+        "4":  "Pnom_kW",
+        "5":  "Qnom_kVAr",
+        "6":  "Snom_kVA",
+        "7":  "Fmeas_Hz",
+        "8":  "Vgrid_rms_meas_kV",
+        "9":  "Pmeas_kW",
+        "10": "Qmeas_kVAr",
+        "11": "Smeas_kVA",
+        "12": "PFmeas",
+        "13": "Vgen_rms_meas_V",
+        "14": "Gen_speed_RPM",
+        "15": "State",
+        "16": "Alarm_Msg",
+        "17": "Converter_mode_fb"
+      },
+      "40": {
+        "0":  "Pref_pu",
+        "1":  "Qref_pu",
+        "2":  "Operation_Mode",
+        "3":  "Vrms_ref_pu",
+        "4":  "Fref_pu",
+        "5":  "Freq_Droop_Offset_pu",
+        "6":  "Freq_Droop_Coeff_pct",
+        "7":  "Volt_Droop_Coeff_pct",
+        "8":  "Pref_RoC_pu_s",
+        "9":  "Qref_RoC_pu_s",
+        "10": "Vrms_ref_RoC_pu_s",
+        "11": "Fref_RoC_pu_s",
+        "12": "I_Alarm_Upper_pu",
+        "13": "I_Alarm_Timeout_s",
+        "14": "V_Alarm_Lower_pu",
+        "15": "Drift_Alarm_Freq_Bound_pu",
+        "16": "Sync_Timeout_s",
+        "17": "Volt_Droop_Offset_pu"
       }
     }
   },
@@ -149,16 +187,76 @@
   "Battery": {
     "groups": {
       "1": {
-        "0": "Enable_fb"
+        "0": "Enable_fb",
+        "1": "MCB_status",
+        "2": "Lvrt_active_status"
+      },
+      "10": {
+        "0": "Enable",
+        "1": "Reset_Alarms",
+        "2": "LVRT_Enable",
+        "3": "VoltVAr_Enable",
+        "4": "HzWatt_Enable",
+        "5": "VoltWatt_Enable"
       },
       "30": {
-        "0": "Voltage",
-        "1": "Frequency",
-        "2": "Active_Power",
-        "3": "SOC",
-        "4": "SOH",
-        "5": "Battery_Voltage",
-        "6": "Battery_Current"
+        "0":  "Converter_mode_fb",
+        "1":  "Pref_fb_kW",
+        "2":  "Qref_fb_kVAr",
+        "3":  "Pnom_kW",
+        "4":  "Qnom_kVAr",
+        "5":  "Snom_kVA",
+        "6":  "Vnom_LL_V",
+        "7":  "Fnom_Hz",
+        "8":  "Vrms_ref_fb_V",
+        "9":  "Fref_fb_Hz",
+        "10": "Vgrid_rms_meas_kV",
+        "11": "Fmeas_Hz",
+        "12": "Pmeas_kW",
+        "13": "Pa_meas_kW",
+        "14": "Pb_meas_kW",
+        "15": "Pc_meas_kW",
+        "16": "Qmeas_kVAr",
+        "17": "Qa_meas_kVAr",
+        "18": "Qb_meas_kVAr",
+        "19": "Qc_meas_kVAr",
+        "20": "Smeas_kVA",
+        "21": "PFmeas",
+        "22": "Vconv_rms_meas_V",
+        "23": "SOC",
+        "24": "SOH",
+        "25": "Vbatt_V",
+        "26": "Ibatt_A",
+        "27": "State",
+        "28": "Alarm_Msg",
+        "29": "Batt_cap_nom_Ah"
+      },
+      "40": {
+        "0":  "Converter_Mode",
+        "1":  "Pref_pu",
+        "2":  "Qref_pu",
+        "3":  "Freq_Droop_Offset_pu",
+        "4":  "Freq_Droop_Coeff_pct",
+        "5":  "Volt_Droop_Coeff_pct",
+        "6":  "Vrms_ref_pu",
+        "7":  "Fref_pu",
+        "8":  "Max_SOC_pct",
+        "9":  "Min_SOC_pct",
+        "10": "Pref_RoC_pu_s",
+        "11": "Qref_RoC_pu_s",
+        "12": "Vrms_ref_RoC_pu_s",
+        "13": "Fref_RoC_pu_s",
+        "14": "LVRT_Q_Contribution_pct",
+        "15": "LVRT_P_Set_pu",
+        "16": "V_Alarm_Upper_pu",
+        "17": "V_Alarm_Lower_pu",
+        "18": "F_Alarm_Upper_pu",
+        "19": "F_Alarm_Lower_pu",
+        "20": "S_Alarm_Upper_pu",
+        "21": "I_Alarm_Upper_pu",
+        "22": "Volt_Droop_Offset_pu",
+        "23": "Initial_SOC_pct",
+        "24": "Initial_SOH_pct"
       }
     }
   }

@@ -54,6 +54,35 @@ class SolidServer:
 
 
 
+    def register_account(self, email: str, password: str, pod_name: str) -> dict:
+        """
+        Registers a new account on the CSS instance via /idp/register/.
+        Returns a dict with 'webId' and 'podBaseUrl' on success.
+        """
+        base = self.solid_server.rstrip("/")
+        response = requests.post(
+            f"{base}/idp/register/",
+            json={
+                "email": email,
+                "password": password,
+                "confirmPassword": password,
+                "podName": pod_name,
+                "createWebId": "on",
+                "createPod": "on",
+                "register": "on",
+            },
+            timeout=10,
+            verify=False,
+        )
+
+        if not response.ok:
+            raise Exception(
+                f"Registration failed ({response.status_code}): {response.text}"
+            )
+
+        data = response.json()
+        return {"webId": data["webId"], "podBaseUrl": data["podBaseUrl"]}
+
     def upload(self, resource_url, rdf_data):
         headers = {"Content-Type": "text/turtle"}
 
