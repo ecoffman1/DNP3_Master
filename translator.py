@@ -3,6 +3,7 @@ import threading
 import time
 import queue
 from rdf import add_context
+from load_devices import ADDR_CONFIG
 import struct
 
 UPLOAD_WORKERS = 4        # concurrent upload threads
@@ -85,6 +86,8 @@ class Translator:
                             index_dict["timestamps"] = []
 
             for (slave_id, group, index), data in snapshot.items():
+                device_type = ADDR_CONFIG[str(slave_id)]["device_type"]
+                device_key = f"{device_type}_{slave_id}"
                 rdf_data = add_context(
                     local_address=slave_id,
                     group=group,
@@ -92,20 +95,20 @@ class Translator:
                     value=data["values"],
                     timestamp=data["timestamps"],
                 )
-                self._upload_queue.put(rdf_data)
+                self._upload_queue.put((rdf_data, device_key))
 
     def _upload_worker(self):
         while True:
-            rdf_data = self._upload_queue.get()
+            rdf_data, device_key = self._upload_queue.get()
             try:
-                self._upload_with_retry(rdf_data)
+                self._upload_with_retry(rdf_data, device_key)
             finally:
                 self._upload_queue.task_done()
 
-    def _upload_with_retry(self, rdf_data, max_retries=3):
+    def _upload_with_retry(self, rdf_data, device_key, max_retries=3):
         for attempt in range(max_retries):
             try:
-                self.solid_server.append(rdf_data)
+                self.solid_server.append(rdf_data, device_key)
                 return
             except Exception as e:
                 print(f"Upload failed (attempt {attempt+1}/{max_retries}): {e}")
