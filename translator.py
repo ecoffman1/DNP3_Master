@@ -6,7 +6,7 @@ from rdf import add_context
 from load_devices import ADDR_CONFIG
 import struct
 
-UPLOAD_WORKERS = 4        # concurrent upload threads
+UPLOAD_WORKERS = 1        # concurrent upload threads
 UPLOAD_BATCH_INTERVAL = 60  # seconds between buffer flushes
 
 class Translator:
@@ -85,6 +85,8 @@ class Translator:
                             index_dict["values"] = []
                             index_dict["timestamps"] = []
 
+            # Group all registers for the same device into one combined graph
+            device_graphs = {}
             for (slave_id, group, index), data in snapshot.items():
                 device_type = ADDR_CONFIG[str(slave_id)]["device_type"]
                 device_key = f"{device_type}_{slave_id}"
@@ -95,7 +97,13 @@ class Translator:
                     value=data["values"],
                     timestamp=data["timestamps"],
                 )
-                self._upload_queue.put((rdf_data, device_key))
+                if device_key not in device_graphs:
+                    device_graphs[device_key] = rdf_data
+                else:
+                    device_graphs[device_key] += rdf_data
+
+            for device_key, combined_graph in device_graphs.items():
+                self._upload_queue.put((combined_graph, device_key))
 
     def _upload_worker(self):
         while True:

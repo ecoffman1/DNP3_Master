@@ -125,12 +125,53 @@ class SolidServer:
                 print(f"[{device_key}] Registration error: {e}")
 
             try:
-                self._device_auth[device_key] = self._build_auth(
-                    info["email"], info["password"]
-                )
+                auth = self._build_auth(info["email"], info["password"])
+                self._device_auth[device_key] = auth
                 print(f"[{device_key}] Auth ready")
             except Exception as e:
                 print(f"[{device_key}] Auth error: {e}")
+                continue
+
+            try:
+                self._set_public_read(device_key, auth)
+                print(f"[{device_key}] Public read ACL set")
+            except Exception as e:
+                print(f"[{device_key}] ACL error: {e}")
+
+    def _set_public_read(self, device_key: str, auth: SolidClientCredentialsAuth):
+        """PUT a WAC ACL on the write_dir container granting public read access."""
+        info = SOLID_DEVICES[device_key]
+        container = info["write_dir"].rstrip("/") + "/"
+        acl_url = container + ".acl"
+        web_id = info["webId"]
+
+        acl_body = f"""@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<#owner>
+    a acl:Authorization ;
+    acl:agent <{web_id}> ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+
+<#public>
+    a acl:Authorization ;
+    acl:agentClass foaf:Agent ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read .
+"""
+        response = requests.put(
+            acl_url,
+            headers={"Content-Type": "text/turtle"},
+            data=acl_body,
+            auth=auth,
+            verify=False,
+            timeout=10,
+        )
+        if not response.ok:
+            raise Exception(f"ACL PUT failed ({response.status_code}): {response.text}")
 
     def upload(self, resource_url, rdf_data):
         headers = {"Content-Type": "text/turtle"}
@@ -165,7 +206,7 @@ class SolidServer:
                 data=sparql_query,
                 auth=self._device_auth.get(device_key),
                 verify=False,
-                timeout=8,
+                timeout=30,
             )
 
             if response.status_code not in [200, 201, 204, 205]:
