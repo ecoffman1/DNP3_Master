@@ -1,4 +1,10 @@
+import asyncio
+import json
+import ssl
+import threading
+
 import requests
+import websockets
 from functools import wraps
 from urllib.parse import urljoin
 from solid_client_credentials import SolidClientCredentialsAuth, DpopTokenProvider
@@ -25,7 +31,7 @@ requests.get = _insecure_get
 requests.post = _insecure_post
 
 from config import (
-    SOLID_SERVER, RESOURCE_URL, OIDC_ISSUER, CSS_EMAIL, CSS_PASSWORD
+    SOLID_SERVER, RESOURCE_URL, OIDC_ISSUER, CSS_EMAIL, CSS_PASSWORD, PORTAL_WEB_ID
 )
 from load_devices import SOLID_DEVICES
 
@@ -138,6 +144,12 @@ class SolidServer:
             except Exception as e:
                 print(f"[{device_key}] ACL error: {e}")
 
+            try:
+                self._set_commands_acl(device_key, auth)
+                print(f"[{device_key}] Commands ACL set")
+            except Exception as e:
+                print(f"[{device_key}] Commands ACL error: {e}")
+
     def _set_public_read(self, device_key: str, auth: SolidClientCredentialsAuth):
         """PUT a WAC ACL on the write_dir container granting public read access."""
         info = SOLID_DEVICES[device_key]
@@ -173,6 +185,59 @@ class SolidServer:
         if not response.ok:
             raise Exception(f"ACL PUT failed ({response.status_code}): {response.text}")
 
+    def _set_commands_acl(self, device_key: str, auth: SolidClientCredentialsAuth):
+        """PUT a WAC ACL on the dnp3_commands/ container.
+
+        Grants the device pod owner full control and the portal user read+write.
+        Falls back to public read+write if PORTAL_WEB_ID is not configured.
+        """
+        info = SOLID_DEVICES[device_key]
+        base = self.solid_server.rstrip("/")
+        container = f"{base}/{device_key}/dnp3_commands/"
+        acl_url = container + ".acl"
+        web_id = info["webId"]
+
+        if PORTAL_WEB_ID:
+            portal_block = f"""
+<#portal>
+    a acl:Authorization ;
+    acl:agent <{PORTAL_WEB_ID}> ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read, acl:Write .
+"""
+        else:
+            portal_block = f"""
+<#public>
+    a acl:Authorization ;
+    acl:agentClass foaf:Agent ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read, acl:Write .
+"""
+
+        acl_body = f"""@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<#owner>
+    a acl:Authorization ;
+    acl:agent <{web_id}> ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+{portal_block}"""
+
+        response = requests.put(
+            acl_url,
+            headers={"Content-Type": "text/turtle"},
+            data=acl_body,
+            auth=auth,
+            verify=False,
+            timeout=10,
+        )
+        if not response.ok:
+            raise Exception(f"Commands ACL PUT failed ({response.status_code}): {response.text}")
+
     def upload(self, resource_url, rdf_data):
         headers = {"Content-Type": "text/turtle"}
 
@@ -184,22 +249,26 @@ class SolidServer:
         else:
             return f"Failed to save data ({response.status_code}): {response.text}"
 
+    def _refresh_auth(self, device_key: str):
+        """Rebuild and cache a fresh auth object for the given device."""
+        info = SOLID_DEVICES[device_key]
+        self._device_auth[device_key] = self._build_auth(info["email"], info["password"])
+
     def append(self, rdf_graph, device_key):
         try:
             write_dir = SOLID_DEVICES[device_key]["write_dir"].rstrip("/")
             target_url = f"{write_dir}/data.ttl"
-            
+
             # Prepare SPARQL Update
             prefixes = "\n".join([f"PREFIX {p}: <{n}>" for p, n in rdf_graph.namespaces()])
             triples = " .\n".join([f"{s.n3()} {p.n3()} {o.n3()}" for s, p, o in rdf_graph])
             sparql_query = f"{prefixes}\nINSERT DATA {{ {triples} }}"
-            
+
             headers = {
                 "Content-Type": "application/sparql-update",
                 "Link": '<http://www.w3.org/ns/ldp#Resource>; rel="type"'
             }
-            
-            # Send to the Solid Pod
+
             response = requests.patch(
                 target_url,
                 headers=headers,
@@ -209,9 +278,21 @@ class SolidServer:
                 timeout=30,
             )
 
+            if response.status_code == 401:
+                # Token expired — refresh auth and retry once
+                self._refresh_auth(device_key)
+                response = requests.patch(
+                    target_url,
+                    headers=headers,
+                    data=sparql_query,
+                    auth=self._device_auth.get(device_key),
+                    verify=False,
+                    timeout=30,
+                )
+
             if response.status_code not in [200, 201, 204, 205]:
                 print(f"Error {response.status_code}: {response.text}")
-                
+
             return response.status_code
 
         except StopIteration:
@@ -287,12 +368,89 @@ class SolidServer:
             return
 
         DNP3 = Namespace("https://ec2-34-201-119-230.compute-1.amazonaws.com/char/dnp3/#")
-        
+
         for subject in rdf_graph.subjects(unique=True):
             reg = rdf_graph.value(subject, DNP3.register)
             val = rdf_graph.value(subject, DNP3.value)
             time = rdf_graph.value(subject, DNP3.accessed)
             group = rdf_graph.value(subject, DNP3.func_code)
-            
+
             if all(v is not None for v in [reg, val, time, group]):
                 print(f"[{time}] Group {group} | Reg {reg} | Val: {val}")
+
+    # ------------------------------------------------------------------
+    # Command listening (Solid → DNP3)
+    # ------------------------------------------------------------------
+
+    def get_websocket_url(self, device_key: str, commands_url: str) -> str:
+        """Subscribe to Solid WebSocket notifications for a commands resource."""
+        auth = self._device_auth.get(device_key)
+        payload = {
+            "@context": ["https://www.w3.org/ns/solid/notification/v1"],
+            "type": "http://www.w3.org/ns/solid/notifications#WebSocketChannel2023",
+            "topic": commands_url,
+        }
+        url = self.solid_server + "/.notifications/WebSocketChannel2023/"
+        response = requests.post(
+            url,
+            headers={"Content-Type": "application/ld+json"},
+            json=payload,
+            auth=auth,
+            verify=False,
+            timeout=10,
+        )
+        if response.status_code == 200:
+            ws_url = response.json().get("receiveFrom")
+            print(f"[{device_key}] WebSocket URL: {ws_url}")
+            return ws_url
+        else:
+            raise Exception(
+                f"[{device_key}] WebSocket subscription failed ({response.status_code}): {response.text}"
+            )
+
+    def get_command(self, commands_url: str) -> dict:
+        """Fetch a command from a Solid resource.
+
+        Accepts two formats:
+          - Plain text "1" (sim on) or "0" (sim off) — written by the dashboard
+          - JSON {"index": 0, "turn_on": true}
+        """
+        response = requests.get(commands_url, verify=False, timeout=10)
+        if response.status_code != 200:
+            raise Exception(
+                f"Failed to fetch command ({response.status_code}): {response.text}"
+            )
+        text = response.text.strip()
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+        # Plain-text convention: "1" = on, "0" = off
+        return {"turn_on": text == "1"}
+
+    async def _ws_listener(self, websocket_url: str, callback):
+        """Async loop that calls callback(object_url) on every WebSocket message."""
+        ssl_context = ssl._create_unverified_context()
+        async with websockets.connect(websocket_url, ssl=ssl_context) as websocket:
+            print(f"Connected to WebSocket: {websocket_url}")
+            while True:
+                message = await websocket.recv()
+                data = json.loads(message)
+                object_url = data.get("object")
+                if object_url:
+                    callback(object_url)
+
+    def start_websocket_listener(self, device_key: str, commands_url: str, callback):
+        """Start a background thread that listens for command notifications on Solid."""
+        def run():
+            try:
+                ws_url = self.get_websocket_url(device_key, commands_url)
+                asyncio.run(self._ws_listener(ws_url, callback))
+            except Exception as e:
+                print(f"[{device_key}] WebSocket listener error: {e}")
+
+        t = threading.Thread(target=run, daemon=True, name=f"ws-{device_key}")
+        t.start()
+        return t

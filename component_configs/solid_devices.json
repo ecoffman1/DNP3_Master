@@ -3,78 +3,91 @@
     "email": "pvpp_1000@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1000/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1000/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1000/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1000/dnp3_commands/PV_Power_Plant_1000"
   },
   "PV_Power_Plant_1001": {
     "email": "pvpp_1001@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1001/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1001/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1001/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1001/dnp3_commands/PV_Power_Plant_1001"
   },
   "PV_Power_Plant_1002": {
     "email": "pvpp_1002@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1002/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1002/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1002/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1002/dnp3_commands/PV_Power_Plant_1002"
   },
   "PV_Power_Plant_1003": {
     "email": "pvpp_1003@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1003/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1003/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1003/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/PV_Power_Plant_1003/dnp3_commands/PV_Power_Plant_1003"
   },
   "Battery_1004": {
     "email": "battery_1004@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1004/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1004/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1004/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1004/dnp3_commands/Battery_1004"
   },
   "Battery_1005": {
     "email": "battery_1005@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1005/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1005/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1005/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1005/dnp3_commands/Battery_1005"
   },
   "Battery_1006": {
     "email": "battery_1006@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1006/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1006/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1006/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1006/dnp3_commands/Battery_1006"
   },
   "Battery_1007": {
     "email": "battery_1007@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1007/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1007/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1007/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Battery_1007/dnp3_commands/Battery_1007"
   },
   "Wind_Power_Plant_1008": {
     "email": "wind_1008@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1008/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1008/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1008/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1008/dnp3_commands/Wind_Power_Plant_1008"
   },
   "Wind_Power_Plant_1009": {
     "email": "wind_1009@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1009/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1009/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1009/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1009/dnp3_commands/Wind_Power_Plant_1009"
   },
   "Wind_Power_Plant_1010": {
     "email": "wind_1010@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1010/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1010/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1010/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1010/dnp3_commands/Wind_Power_Plant_1010"
   },
   "Wind_Power_Plant_1011": {
     "email": "wind_1011@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1011/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1011/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1011/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Wind_Power_Plant_1011/dnp3_commands/Wind_Power_Plant_1011"
   },
   "Diesel_Generator_1012": {
     "email": "diesel_1012@example.com",
     "password": "password123",
     "webId": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Diesel_Generator_1012/profile/card#me",
-    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Diesel_Generator_1012/dnp3/"
+    "write_dir": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Diesel_Generator_1012/dnp3/",
+    "commands_url": "https://ec2-34-201-119-230.compute-1.amazonaws.com/Diesel_Generator_1012/dnp3_commands/Diesel_Generator_1012"
   }
 }

@@ -17,3 +17,6 @@ OIDC_ISSUER = os.getenv("OIDC_ISSUER")
 # CSS Account Credentials
 CSS_EMAIL = os.getenv("CSS_EMAIL")
 CSS_PASSWORD = os.getenv("CSS_PASSWORD")
+
+# WebID of the portal/utility user that writes commands to device pods
+PORTAL_WEB_ID = os.getenv("PORTAL_WEB_ID")

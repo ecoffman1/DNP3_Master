@@ -3,7 +3,7 @@ import threading
 import time
 import queue
 from rdf import add_context
-from load_devices import ADDR_CONFIG
+from load_devices import ADDR_CONFIG, SOLID_DEVICES
 import struct
 
 UPLOAD_WORKERS = 1        # concurrent upload threads
@@ -123,3 +123,46 @@ class Translator:
                 if attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
         print(f"Giving up on upload after {max_retries} attempts")
+
+    # ------------------------------------------------------------------
+    # Command listening (Solid → DNP3)
+    # ------------------------------------------------------------------
+
+    def start_command_listeners(self):
+        """Subscribe to Solid WebSocket command channels for each known device."""
+        for device_key, info in SOLID_DEVICES.items():
+            commands_url = info.get("commands_url")
+            if not commands_url:
+                print(f"[{device_key}] No commands_url configured, skipping")
+                continue
+
+            # Derive slave address from the trailing number in the device key
+            try:
+                slave_addr = int(device_key.rsplit("_", 1)[-1])
+            except ValueError:
+                print(f"[{device_key}] Cannot parse slave address from key, skipping")
+                continue
+
+            self.solid_server.start_websocket_listener(
+                device_key=device_key,
+                commands_url=commands_url,
+                callback=lambda url, dk=device_key, sa=slave_addr: self._on_command(dk, sa, url),
+            )
+            print(f"[{device_key}] Command listener started (slave={slave_addr})")
+
+    def _on_command(self, device_key: str, slave_addr: int, object_url: str):
+        """Called when Solid notifies us of a new command for a device."""
+        try:
+            command = self.solid_server.get_command(object_url)
+            index = int(command.get("index", 0))
+            turn_on = bool(command.get("turn_on", False))
+
+            slave = self.DNP3_master.get_slave(slave_addr)
+            if slave is None:
+                print(f"[{device_key}] No active session for slave {slave_addr}")
+                return
+
+            print(f"[{device_key}] Executing command: index={index}, turn_on={turn_on}")
+            self.send_command(slave=slave, index=index, turn_on=turn_on)
+        except Exception as e:
+            print(f"[{device_key}] Command execution error: {e}")
