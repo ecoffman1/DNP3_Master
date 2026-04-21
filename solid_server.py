@@ -251,15 +251,29 @@ class SolidServer:
         info = SOLID_DEVICES[device_key]
         self._device_auth[device_key] = self._build_auth(info["email"], info["password"])
 
+    def _build_sparql_insert(self, rdf_graph) -> str:
+        from rdflib import Literal, URIRef
+
+        def term(t):
+            if isinstance(t, Literal):
+                val = str(t).replace("\\", "\\\\").replace('"', '\\"') \
+                            .replace("\n", "\\n").replace("\r", "\\r")
+                if t.datatype:
+                    return f'"{val}"^^<{t.datatype}>'
+                elif t.language:
+                    return f'"{val}"@{t.language}'
+                return f'"{val}"'
+            return f"<{t}>"
+
+        lines = [f"  {term(s)} {term(p)} {term(o)} ." for s, p, o in rdf_graph]
+        return "INSERT DATA {\n" + "\n".join(lines) + "\n}"
+
     def append(self, rdf_graph, device_key):
         try:
             write_dir = SOLID_DEVICES[device_key]["write_dir"].rstrip("/")
             target_url = f"{write_dir}/data.ttl"
 
-            # Prepare SPARQL Update
-            prefixes = "\n".join([f"PREFIX {p}: <{n}>" for p, n in rdf_graph.namespaces()])
-            triples = " .\n".join([f"{s.n3()} {p.n3()} {o.n3()}" for s, p, o in rdf_graph])
-            sparql_query = f"{prefixes}\nINSERT DATA {{ {triples} }}"
+            sparql_query = self._build_sparql_insert(rdf_graph)
 
             headers = {
                 "Content-Type": "application/sparql-update",
