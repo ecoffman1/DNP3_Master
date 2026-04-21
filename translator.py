@@ -153,7 +153,7 @@ class Translator:
     def _on_command(self, device_key: str, slave_addr: int, object_url: str):
         """Called when Solid notifies us of a new command for a device."""
         try:
-            command = self.solid_server.get_command(object_url)
+            command = self.solid_server.get_command(object_url, device_key)
             index = int(command.get("index", 0))
             turn_on = bool(command.get("turn_on", False))
 

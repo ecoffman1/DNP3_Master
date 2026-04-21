@@ -14,7 +14,6 @@ def add_context(local_address, group, index, value, timestamp):
     device_type = ADDR_CONFIG[str(local_address)]["device_type"]
     device_mapping = DEVICE_CONFIGS[device_type]
     field = device_mapping["groups"][group][str(index)]
-
     if type(timestamp) == list:
         upload_timestamp = timestamp[-1]
     else:

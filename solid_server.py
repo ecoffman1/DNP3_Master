@@ -139,10 +139,10 @@ class SolidServer:
                 continue
 
             try:
-                self._set_public_read(device_key, auth)
-                print(f"[{device_key}] Public read ACL set")
+                self._set_data_acl(device_key, auth)
+                print(f"[{device_key}] Data ACL set (utility read-only)")
             except Exception as e:
-                print(f"[{device_key}] ACL error: {e}")
+                print(f"[{device_key}] Data ACL error: {e}")
 
             try:
                 self._set_commands_acl(device_key, auth)
@@ -150,15 +150,22 @@ class SolidServer:
             except Exception as e:
                 print(f"[{device_key}] Commands ACL error: {e}")
 
-    def _set_public_read(self, device_key: str, auth: SolidClientCredentialsAuth):
-        """PUT a WAC ACL on the write_dir container granting public read access."""
+    def _set_data_acl(self, device_key: str, auth: SolidClientCredentialsAuth):
+        """PUT a WAC ACL on the dnp3/ (write_dir) container.
+
+        Device pod owner: Read, Write, Control.
+        Utility account:  Read only.
+        No public access.
+        """
+        if not PORTAL_WEB_ID:
+            raise Exception("PORTAL_WEB_ID must be set to configure data ACL")
+
         info = SOLID_DEVICES[device_key]
         container = info["write_dir"].rstrip("/") + "/"
         acl_url = container + ".acl"
         web_id = info["webId"]
 
         acl_body = f"""@prefix acl: <http://www.w3.org/ns/auth/acl#> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 
 <#owner>
     a acl:Authorization ;
@@ -167,9 +174,9 @@ class SolidServer:
     acl:default <{container}> ;
     acl:mode acl:Read, acl:Write, acl:Control .
 
-<#public>
+<#utility>
     a acl:Authorization ;
-    acl:agentClass foaf:Agent ;
+    acl:agent <{PORTAL_WEB_ID}> ;
     acl:accessTo <{container}> ;
     acl:default <{container}> ;
     acl:mode acl:Read .
@@ -183,41 +190,25 @@ class SolidServer:
             timeout=10,
         )
         if not response.ok:
-            raise Exception(f"ACL PUT failed ({response.status_code}): {response.text}")
+            raise Exception(f"Data ACL PUT failed ({response.status_code}): {response.text}")
 
     def _set_commands_acl(self, device_key: str, auth: SolidClientCredentialsAuth):
         """PUT a WAC ACL on the dnp3_commands/ container.
 
-        Grants the device pod owner full control and the portal user read+write.
-        Falls back to public read+write if PORTAL_WEB_ID is not configured.
+        Device pod owner: Read, Write, Control.
+        Utility account:  Read, Write (so the dashboard can post commands).
+        No public access.
         """
+        if not PORTAL_WEB_ID:
+            raise Exception("PORTAL_WEB_ID must be set to configure commands ACL")
+
         info = SOLID_DEVICES[device_key]
         base = self.solid_server.rstrip("/")
         container = f"{base}/{device_key}/dnp3_commands/"
         acl_url = container + ".acl"
         web_id = info["webId"]
 
-        if PORTAL_WEB_ID:
-            portal_block = f"""
-<#portal>
-    a acl:Authorization ;
-    acl:agent <{PORTAL_WEB_ID}> ;
-    acl:accessTo <{container}> ;
-    acl:default <{container}> ;
-    acl:mode acl:Read, acl:Write .
-"""
-        else:
-            portal_block = f"""
-<#public>
-    a acl:Authorization ;
-    acl:agentClass foaf:Agent ;
-    acl:accessTo <{container}> ;
-    acl:default <{container}> ;
-    acl:mode acl:Read, acl:Write .
-"""
-
         acl_body = f"""@prefix acl: <http://www.w3.org/ns/auth/acl#> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 
 <#owner>
     a acl:Authorization ;
@@ -225,8 +216,14 @@ class SolidServer:
     acl:accessTo <{container}> ;
     acl:default <{container}> ;
     acl:mode acl:Read, acl:Write, acl:Control .
-{portal_block}"""
 
+<#utility>
+    a acl:Authorization ;
+    acl:agent <{PORTAL_WEB_ID}> ;
+    acl:accessTo <{container}> ;
+    acl:default <{container}> ;
+    acl:mode acl:Read, acl:Write .
+"""
         response = requests.put(
             acl_url,
             headers={"Content-Type": "text/turtle"},
@@ -385,6 +382,7 @@ class SolidServer:
     def get_websocket_url(self, device_key: str, commands_url: str) -> str:
         """Subscribe to Solid WebSocket notifications for a commands resource."""
         auth = self._device_auth.get(device_key)
+        print(f"[{device_key}] WebSocket subscription auth={auth}")
         payload = {
             "@context": ["https://www.w3.org/ns/solid/notification/v1"],
             "type": "http://www.w3.org/ns/solid/notifications#WebSocketChannel2023",
@@ -408,14 +406,15 @@ class SolidServer:
                 f"[{device_key}] WebSocket subscription failed ({response.status_code}): {response.text}"
             )
 
-    def get_command(self, commands_url: str) -> dict:
+    def get_command(self, commands_url: str, device_key: str) -> dict:
         """Fetch a command from a Solid resource.
 
         Accepts two formats:
           - Plain text "1" (sim on) or "0" (sim off) — written by the dashboard
           - JSON {"index": 0, "turn_on": true}
         """
-        response = requests.get(commands_url, verify=False, timeout=10)
+        auth = self._device_auth.get(device_key)
+        response = requests.get(commands_url, auth=auth, verify=False, timeout=10)
         if response.status_code != 200:
             raise Exception(
                 f"Failed to fetch command ({response.status_code}): {response.text}"
