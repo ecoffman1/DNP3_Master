@@ -253,28 +253,28 @@ class SolidServer:
 
     def append(self, rdf_graph, device_key):
         try:
-            from datetime import datetime
             write_dir = SOLID_DEVICES[device_key]["write_dir"].rstrip("/")
-            timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S")
-            target_url = f"{write_dir}/data_{timestamp}.ttl"
+            target_url = f"{write_dir}/data.ttl"
 
-            turtle_data = rdf_graph.serialize(format="turtle")
+            ntriples = rdf_graph.serialize(format="ntriples")
+            sparql = f"INSERT DATA {{\n{ntriples}\n}}"
 
-            response = requests.put(
+            auth = self._device_auth.get(device_key)
+            response = requests.patch(
                 target_url,
-                headers={"Content-Type": "text/turtle"},
-                data=turtle_data,
-                auth=self._device_auth.get(device_key),
+                headers={"Content-Type": "application/sparql-update"},
+                data=sparql,
+                auth=auth,
                 verify=False,
                 timeout=30,
             )
 
             if response.status_code == 401:
                 self._refresh_auth(device_key)
-                response = requests.put(
+                response = requests.patch(
                     target_url,
-                    headers={"Content-Type": "text/turtle"},
-                    data=turtle_data,
+                    headers={"Content-Type": "application/sparql-update"},
+                    data=sparql,
                     auth=self._device_auth.get(device_key),
                     verify=False,
                     timeout=30,
@@ -285,8 +285,6 @@ class SolidServer:
 
             return response.status_code
 
-        except StopIteration:
-            return None
         except Exception as e:
             print(f"Error in append: {e}")
             return None
