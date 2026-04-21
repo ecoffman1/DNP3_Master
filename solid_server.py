@@ -251,51 +251,30 @@ class SolidServer:
         info = SOLID_DEVICES[device_key]
         self._device_auth[device_key] = self._build_auth(info["email"], info["password"])
 
-    def _build_sparql_insert(self, rdf_graph) -> str:
-        from rdflib import Literal, URIRef
-
-        def term(t):
-            if isinstance(t, Literal):
-                val = str(t).replace("\\", "\\\\").replace('"', '\\"') \
-                            .replace("\n", "\\n").replace("\r", "\\r")
-                if t.datatype:
-                    return f'"{val}"^^<{t.datatype}>'
-                elif t.language:
-                    return f'"{val}"@{t.language}'
-                return f'"{val}"'
-            return f"<{t}>"
-
-        lines = [f"  {term(s)} {term(p)} {term(o)} ." for s, p, o in rdf_graph]
-        return "INSERT DATA {\n" + "\n".join(lines) + "\n}"
-
     def append(self, rdf_graph, device_key):
         try:
+            from datetime import datetime
             write_dir = SOLID_DEVICES[device_key]["write_dir"].rstrip("/")
-            target_url = f"{write_dir}/data.ttl"
+            timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S")
+            target_url = f"{write_dir}/data_{timestamp}.ttl"
 
-            sparql_query = self._build_sparql_insert(rdf_graph)
+            turtle_data = rdf_graph.serialize(format="turtle")
 
-            headers = {
-                "Content-Type": "application/sparql-update",
-                "Link": '<http://www.w3.org/ns/ldp#Resource>; rel="type"'
-            }
-
-            response = requests.patch(
+            response = requests.put(
                 target_url,
-                headers=headers,
-                data=sparql_query,
+                headers={"Content-Type": "text/turtle"},
+                data=turtle_data,
                 auth=self._device_auth.get(device_key),
                 verify=False,
                 timeout=30,
             )
 
             if response.status_code == 401:
-                # Token expired — refresh auth and retry once
                 self._refresh_auth(device_key)
-                response = requests.patch(
+                response = requests.put(
                     target_url,
-                    headers=headers,
-                    data=sparql_query,
+                    headers={"Content-Type": "text/turtle"},
+                    data=turtle_data,
                     auth=self._device_auth.get(device_key),
                     verify=False,
                     timeout=30,
